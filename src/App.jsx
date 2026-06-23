@@ -6,6 +6,9 @@ import {
   Trash2, Edit, ArrowRight, AlertTriangle, ChevronLeft, Mail,
   Share2, Download
 } from 'lucide-react';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from './firebase';
 
 const INITIAL_CLIENTS = [];
 
@@ -22,8 +25,8 @@ const INITIAL_TRUCKS = [];
 
 export default function App() {
   const [currentView, setCurrentView] = useState('login'); // login, admin, client
-  const [trucks, setTrucks] = useState(INITIAL_TRUCKS);
-  const [clients, setClients] = useState(INITIAL_CLIENTS);
+  const [trucks, setTrucks] = useState([]);
+  const [clients, setClients] = useState([]);
   const [showReceptionForm, setShowReceptionForm] = useState(false);
   const [showClientForm, setShowClientForm] = useState(false);
   const [viewingTruck, setViewingTruck] = useState(null);
@@ -33,18 +36,34 @@ export default function App() {
   const [truckToDelete, setTruckToDelete] = useState(null);
   const [adminTab, setAdminTab] = useState('jobs'); // jobs, clients
 
-  // --- FUNCIONES DE ACCIÓN ---
-  const handleAdvanceStatus = (truckId, currentStatus) => {
+  // --- FIREBASE: Sincronización en Tiempo Real ---
+  useEffect(() => {
+    const unsubTrucks = onSnapshot(collection(db, 'trucks'), (snapshot) => {
+      setTrucks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
+      setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => {
+      unsubTrucks();
+      unsubClients();
+    };
+  }, []);
+
+  // --- FUNCIONES DE ACCIÓN (FIREBASE) ---
+  const handleAdvanceStatus = async (truckId, currentStatus) => {
     const currentIndex = STATUS_STEPS.indexOf(currentStatus);
     if (currentIndex < STATUS_STEPS.length - 1) {
       const nextStatus = STATUS_STEPS[currentIndex + 1];
-      setTrucks(trucks.map(t => t.id === truckId ? { ...t, status: nextStatus } : t));
+      await updateDoc(doc(db, 'trucks', truckId), { status: nextStatus });
     }
   };
 
-  const handleDeleteConfirm = () => {
-    setTrucks(trucks.filter(t => t.id !== truckToDelete));
-    setTruckToDelete(null);
+  const handleDeleteConfirm = async () => {
+    if (truckToDelete) {
+      await deleteDoc(doc(db, 'trucks', truckToDelete));
+      setTruckToDelete(null);
+    }
   };
 
   const renderLogin = () => (
@@ -326,12 +345,9 @@ export default function App() {
             setShowClientForm(false);
             setEditingClient(null);
           }}
-          onSave={(clientData) => {
-            if (editingClient) {
-              setClients(clients.map(c => c.id === clientData.id ? clientData : c));
-            } else {
-              setClients([clientData, ...clients]);
-            }
+          onSave={async (clientData) => {
+            const { id, ...dataToSave } = clientData;
+            await setDoc(doc(db, 'clients', id), dataToSave);
             setShowClientForm(false);
             setEditingClient(null);
           }}
@@ -346,12 +362,9 @@ export default function App() {
             setShowReceptionForm(false);
             setEditingTruck(null);
           }} 
-          onSave={(truckData) => {
-            if (editingTruck) {
-              setTrucks(trucks.map(t => t.id === truckData.id ? truckData : t));
-            } else {
-              setTrucks([truckData, ...trucks]);
-            }
+          onSave={async (truckData) => {
+            const { id, ...dataToSave } = truckData;
+            await setDoc(doc(db, 'trucks', id), dataToSave);
             setShowReceptionForm(false);
             setEditingTruck(null);
           }}
@@ -367,8 +380,9 @@ export default function App() {
         <ProgressModal 
           truck={progressTruck} 
           onClose={() => setProgressTruck(null)} 
-          onUpdate={(updatedTruck) => {
-            setTrucks(trucks.map(t => t.id === updatedTruck.id ? updatedTruck : t));
+          onUpdate={async (updatedTruck) => {
+            const { id, ...dataToSave } = updatedTruck;
+            await updateDoc(doc(db, 'trucks', id), dataToSave);
           }}
         />
       )}
@@ -636,20 +650,28 @@ function ReceptionForm({ onClose, onSave, initialData, clients }) {
     if (e.key === 'Enter') e.preventDefault();
   };
 
-  const handleSubmit = (e) => {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSaving(true);
     
-    // Guardar firma si existe
     const canvas = canvasRef.current;
-    let signatureImage = null;
+    let signatureUrl = initialData ? initialData.signature : null;
     
-    // Solo guardar firma si realmente se dibujó algo (verificación básica)
     if (canvas) {
         const blank = document.createElement('canvas');
         blank.width = canvas.width;
         blank.height = canvas.height;
         if (canvas.toDataURL() !== blank.toDataURL()) {
-            signatureImage = canvas.toDataURL();
+            const base64Image = canvas.toDataURL('image/png');
+            try {
+              const signatureRef = ref(storage, `firmas/firma_${Date.now()}.png`);
+              await uploadString(signatureRef, base64Image, 'data_url');
+              signatureUrl = await getDownloadURL(signatureRef);
+            } catch (error) {
+              console.error("Error subiendo firma:", error);
+            }
         }
     }
 
@@ -658,10 +680,11 @@ function ReceptionForm({ onClose, onSave, initialData, clients }) {
       id: initialData ? initialData.id : `CAR-${Math.floor(1000 + Math.random() * 9000)}`,
       status: initialData ? initialData.status : 'A espera de que llegue a taller',
       date: initialData ? initialData.date : new Date().toISOString().split('T')[0],
-      signature: signatureImage || (initialData ? initialData.signature : null)
+      signature: signatureUrl
     };
     
-    onSave(truckData);
+    await onSave(truckData);
+    setIsSaving(false);
   };
 
   const renderChecklistCategory = (title, items) => (
@@ -868,8 +891,8 @@ function ReceptionForm({ onClose, onSave, initialData, clients }) {
                Siguiente <ChevronRight className="w-4 h-4" />
              </button>
           ) : (
-            <button type="submit" form="reception-form" className="px-6 py-3 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 transition-colors shadow-md flex items-center gap-2">
-               <Check className="w-5 h-5" /> {initialData ? 'Guardar Cambios' : 'Finalizar'}
+            <button type="submit" form="reception-form" disabled={isSaving} className="px-6 py-3 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 disabled:bg-green-400 transition-colors shadow-md flex items-center gap-2">
+               <Check className="w-5 h-5" /> {isSaving ? 'Guardando...' : (initialData ? 'Guardar Cambios' : 'Finalizar')}
             </button>
           )}
         </div>
@@ -1122,21 +1145,30 @@ function ProgressModal({ truck, onClose, onUpdate }) {
   const [currentStatus, setCurrentStatus] = useState(truck.status);
   const [photos, setPhotos] = useState(truck.stagePhotos || {});
 
-  const handleAddPhoto = (step) => {
-    // Simulación de subir fotos
-    const demoImages = [
-      'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=300&q=80',
-      'https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?auto=format&fit=crop&w=300&q=80',
-      'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=300&q=80'
-    ];
-    const randomImage = demoImages[Math.floor(Math.random() * demoImages.length)];
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleAddPhoto = async (step, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
     
-    const updatedPhotos = {
-      ...photos,
-      [step]: [...(photos[step] || []), randomImage]
-    };
-    setPhotos(updatedPhotos);
-    onUpdate({ ...truck, status: currentStatus, stagePhotos: updatedPhotos });
+    try {
+      const photoRef = ref(storage, `avances/${truck.id}_${step}_${Date.now()}.png`);
+      await uploadBytes(photoRef, file);
+      const url = await getDownloadURL(photoRef);
+      
+      const updatedPhotos = {
+        ...photos,
+        [step]: [...(photos[step] || []), url]
+      };
+      setPhotos(updatedPhotos);
+      onUpdate({ ...truck, status: currentStatus, stagePhotos: updatedPhotos });
+    } catch (error) {
+      console.error("Error subiendo foto:", error);
+      alert("Error al subir la imagen.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleStatusChange = (newStatus) => {
@@ -1183,12 +1215,16 @@ function ProgressModal({ truck, onClose, onUpdate }) {
                         Fijar como Actual
                       </button>
                     )}
-                    <button 
-                      onClick={() => handleAddPhoto(step)}
-                      className="flex items-center gap-2 px-3 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors"
-                    >
-                      <Camera className="w-4 h-4" /> Subir Foto
-                    </button>
+                    <label className={`flex items-center gap-2 px-3 py-2 text-xs font-bold ${isUploading ? 'bg-slate-400' : 'bg-slate-800 hover:bg-slate-900'} text-white rounded-lg transition-colors cursor-pointer`}>
+                      <Camera className="w-4 h-4" /> {isUploading ? 'Subiendo...' : 'Subir Foto'}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        disabled={isUploading}
+                        onChange={(e) => handleAddPhoto(step, e)} 
+                      />
+                    </label>
                   </div>
                 </div>
 
