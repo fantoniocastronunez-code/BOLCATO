@@ -1660,11 +1660,12 @@ function ClientPreviewModal({ truck, onClose }) {
             <div className="p-6 sm:p-10 border-b border-slate-100 bg-white">
               <h3 className="text-lg font-bold text-slate-800 mb-8">Progreso de Fabricación</h3>
               <div className="relative">
-                {/* LA LÍNEA DEL MEDIO: Corregida para anclarse perfectamente a -1px */}
+                {/* LA LÍNEA DEL MEDIO */}
                 <div className="absolute left-[1.1rem] sm:left-1/2 sm:-ml-[1px] top-0 bottom-0 w-[2px] bg-slate-200"></div>
                 <div className="space-y-10 relative">
                   {STATUS_STEPS.map((step, index) => {
-                    const currentStepIndex = STATUS_STEPS.indexOf(myTruck.status);
+                    // AQUÍ ESTABA EL ERROR. AHORA DICE truck.status CORRECTAMENTE
+                    const currentStepIndex = STATUS_STEPS.indexOf(truck.status); 
                     const isCompleted = index < currentStepIndex;
                     const isCurrent = index === currentStepIndex;
                     const isPending = index > currentStepIndex;
@@ -1677,7 +1678,7 @@ function ClientPreviewModal({ truck, onClose }) {
                           {isCompleted && <span className="text-sm text-slate-500 hidden sm:block">Finalizado</span>}
                           {isCurrent && <span className="text-sm font-bold text-blue-600 hidden sm:block">En Proceso</span>}
                           
-                          {/* El círculo (32px ancho). Para centrarlo en la línea, lo empujamos -16px */}
+                          {/* El círculo */}
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] bg-white sm:absolute sm:-right-[16px]
                             ${isCompleted ? 'border-green-500 text-green-500' : 
                               isCurrent ? 'border-blue-600 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'border-slate-300 text-slate-300'}`}
@@ -1686,7 +1687,7 @@ function ClientPreviewModal({ truck, onClose }) {
                         </div>
                       </div>
 
-                      {/* Lado Derecho (Móvil: Abajo, PC: Mitad derecha exacta) */}
+                      {/* Lado Derecho */}
                       <div className="sm:w-1/2 sm:pl-8 flex flex-col justify-center pb-8 border-l-2 sm:border-l-0 ml-4 sm:ml-0 pl-6 sm:pl-0 border-slate-200">
                          <h4 className={`font-bold text-lg mb-2 ${isCurrent ? 'text-blue-700' : 'text-slate-800'}`}>{step}</h4>
                          
@@ -1744,6 +1745,130 @@ function ClientPreviewModal({ truck, onClose }) {
 
         </div>
       </main>
+    </div>
+  );
+}
+
+// --- NUEVO COMPONENTE: MODAL DE AVANCES Y FOTOS (ANTI-CRASH) ---
+function ProgressModal({ truck, onClose, showToast, onUpdate }) {
+  // ESCUDO 1: Si truck.stagePhotos no existe, forzamos a que sea un objeto vacío {}
+  const [photos, setPhotos] = useState(truck.stagePhotos || {});
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleUpload = async (step, e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    showToast('Subiendo fotos...', 'loading');
+
+    try {
+      const newUrls = [];
+      for (const file of files) {
+        const photoRef = ref(storage, `avances/${truck.id}_${step}_${Date.now()}_${file.name}`);
+        await uploadBytes(photoRef, file);
+        const url = await getDownloadURL(photoRef);
+        newUrls.push(url);
+      }
+
+      // ESCUDO 2: Asegurar de que la etapa actual sea siempre un arreglo, aunque no existiera antes
+      const currentStepPhotos = Array.isArray(photos[step]) ? photos[step] : [];
+      const updatedPhotos = {
+        ...photos,
+        [step]: [...currentStepPhotos, ...newUrls]
+      };
+
+      setPhotos(updatedPhotos);
+      await onUpdate({ ...truck, stagePhotos: updatedPhotos });
+      showToast('Fotos subidas exitosamente', 'success');
+    } catch (error) {
+      console.error("Error subiendo fotos:", error);
+      showToast('Error al subir fotos', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeletePhoto = async (step, photoIndex) => {
+    const currentStepPhotos = Array.isArray(photos[step]) ? photos[step] : [];
+    const newStepPhotos = currentStepPhotos.filter((_, idx) => idx !== photoIndex);
+    
+    const updatedPhotos = {
+      ...photos,
+      [step]: newStepPhotos
+    };
+
+    setPhotos(updatedPhotos);
+    showToast('Eliminando foto...', 'loading');
+    await onUpdate({ ...truck, stagePhotos: updatedPhotos });
+    showToast('Foto eliminada', 'success');
+  };
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center p-4">
+      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
+        
+        <div className="p-4 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Camera className="w-5 h-5" />
+              Avances y Fotos
+            </h2>
+            <p className="text-sm text-slate-400 mt-1">OT: {truck.ot} | Patente: {truck.plate}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50">
+          {STATUS_STEPS.map((step, index) => {
+            // ESCUDO 3: Leemos con seguridad. Si photos[step] es undefined, devuelve un arreglo vacío []
+            const stepPhotos = Array.isArray(photos[step]) ? photos[step] : [];
+            const currentStepIndex = STATUS_STEPS.indexOf(truck.status);
+            const isPastOrCurrent = index <= currentStepIndex;
+
+            // Solo mostramos para subir fotos en las etapas que ya pasaron o en la actual
+            if (!isPastOrCurrent) return null;
+
+            return (
+              <div key={step} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                  <h3 className="font-bold text-slate-800">{step}</h3>
+                  <label className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors w-full sm:w-auto
+                    ${isUploading ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                  >
+                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    Agregar Fotos
+                    <input type="file" accept="image/*" multiple className="hidden" disabled={isUploading} onChange={(e) => handleUpload(step, e)} />
+                  </label>
+                </div>
+
+                {stepPhotos.length > 0 ? (
+                  <div className="flex gap-3 overflow-x-auto py-2">
+                    {stepPhotos.map((url, idx) => (
+                      <div key={idx} className="relative shrink-0 group">
+                        <img src={url} alt="Avance" className="w-24 h-24 object-cover rounded-xl border border-slate-200 shadow-sm" />
+                        <button 
+                          onClick={() => handleDeletePhoto(step, idx)}
+                          className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+                          title="Eliminar foto"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-dashed border-slate-200">
+                    No hay fotos en esta etapa.
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
