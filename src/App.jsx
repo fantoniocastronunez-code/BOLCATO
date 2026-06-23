@@ -4,7 +4,7 @@ import {
   Clock, ChevronRight, Plus, X, Search, FileText, Image as ImageIcon,
   LogOut, Check, Eye, MapPin, PenTool, Users, ClipboardList,
   Trash2, Edit, ArrowRight, AlertTriangle, ChevronLeft, Mail,
-  Share2, Download, Loader2, Shield, UserPlus
+  Share2, Download, Loader2, Shield, UserPlus, Smartphone
 } from 'lucide-react';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -12,6 +12,19 @@ import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth, googleProvider } from './firebase';
 
 const SUPER_ADMIN_EMAIL = "fcastro@logisticats.cl";
+
+const DEFAULT_CHECKLIST_TEMPLATE = [
+  { id: 'luces', category: 'Exterior', name: 'Luces', hasText: false },
+  { id: 'espejos', category: 'Exterior', name: 'Espejos', hasText: false },
+  { id: 'neumaticos', category: 'Exterior', name: 'Neumáticos', hasText: false },
+  { id: 'parachoques', category: 'Exterior', name: 'Parachoques', hasText: true },
+  { id: 'tapiz', category: 'Interior', name: 'Tapiz', hasText: false },
+  { id: 'tablero', category: 'Interior', name: 'Tablero', hasText: false },
+  { id: 'herramientas', category: 'Accesorios', name: 'Herramientas', hasText: false },
+  { id: 'gata', category: 'Accesorios', name: 'Gata', hasText: false },
+  { id: 'padron', category: 'Documentos', name: 'Padrón', hasText: false },
+  { id: 'llaves', category: 'Documentos', name: 'Llaves', hasText: false }
+];
 
 const STATUS_STEPS = [
   'A espera de que llegue a taller',
@@ -39,8 +52,14 @@ export default function App() {
   const [editingTruck, setEditingTruck] = useState(null);
   const [editingClient, setEditingClient] = useState(null);
   const [truckToDelete, setTruckToDelete] = useState(null);
-  const [adminTab, setAdminTab] = useState('jobs'); // jobs, clients, users
+  const [adminTab, setAdminTab] = useState('jobs'); // jobs, clients, users, settings
   const [toast, setToast] = useState(null);
+  const [clientPreviewTruck, setClientPreviewTruck] = useState(null);
+  
+  const [checklistTemplate, setChecklistTemplate] = useState([]);
+  const [newItemCategory, setNewItemCategory] = useState('Exterior');
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemHasText, setNewItemHasText] = useState(false);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -103,18 +122,53 @@ export default function App() {
     });
 
     let unsubSystemUsers = () => {};
+    let unsubSettings = () => {};
+
     if (userRole === 'superadmin') {
       unsubSystemUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
         setSystemUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       });
     }
 
+    unsubSettings = onSnapshot(doc(db, 'settings', 'checklist'), (docSnap) => {
+      if (docSnap.exists()) {
+        setChecklistTemplate(docSnap.data().items || []);
+      } else {
+        setDoc(doc(db, 'settings', 'checklist'), { items: DEFAULT_CHECKLIST_TEMPLATE });
+      }
+    });
+
     return () => {
       unsubTrucks();
       unsubClients();
       unsubSystemUsers();
+      unsubSettings();
     };
   }, [user, userRole]);
+
+  const handleSaveTemplateItem = async (e) => {
+    e.preventDefault();
+    if (!newItemName.trim()) return;
+    const newItem = {
+      id: `item_${Date.now()}`,
+      category: newItemCategory,
+      name: newItemName,
+      hasText: newItemHasText
+    };
+    const updatedTemplate = [...checklistTemplate, newItem];
+    showToast('Actualizando checklist...', 'loading');
+    await setDoc(doc(db, 'settings', 'checklist'), { items: updatedTemplate });
+    setNewItemName('');
+    setNewItemHasText(false);
+    showToast('Ítem agregado exitosamente');
+  };
+
+  const handleDeleteTemplateItem = async (id) => {
+    const updatedTemplate = checklistTemplate.filter(item => item.id !== id);
+    showToast('Eliminando ítem...', 'loading');
+    await setDoc(doc(db, 'settings', 'checklist'), { items: updatedTemplate });
+    showToast('Ítem eliminado');
+  };
 
   const handleAddUser = async (e) => {
     e.preventDefault();
@@ -292,6 +346,15 @@ export default function App() {
                         <Share2 className="w-5 h-5 text-green-600" />
                       </button>
 
+                      {/* --- NUEVO: Botón Vista Cliente --- */}
+                      <button 
+                        onClick={() => setClientPreviewTruck(truck)}
+                        className="flex-1 sm:flex-none flex items-center justify-center p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl transition-colors shadow-sm"
+                        title="Ver cómo lo ve el Cliente"
+                      >
+                        <Smartphone className="w-5 h-5 text-purple-600" />
+                      </button>
+
                       <button 
                         onClick={() => setEditingTruck(truck)}
                         className="flex-1 sm:flex-none flex items-center justify-center p-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl transition-colors shadow-sm"
@@ -457,6 +520,66 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Pestaña: Creador de Checklist (SOLO SUPER ADMIN) */}
+        {adminTab === 'settings' && userRole === 'superadmin' && (
+          <div className="animate-in fade-in">
+            <h2 className="text-2xl font-bold text-slate-800 mb-1">Editor de Checklist</h2>
+            <p className="text-slate-500 text-sm mb-6">Personaliza los ítems de revisión que aparecerán en la recepción de camiones.</p>
+            
+            <div className="grid md:grid-cols-3 gap-6">
+              {/* Formulario para agregar */}
+              <div className="md:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit sticky top-24">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Settings className="w-5 h-5 text-blue-600"/> Nuevo Ítem</h3>
+                <form onSubmit={handleSaveTemplateItem} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Categoría</label>
+                    <select value={newItemCategory} onChange={e => setNewItemCategory(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 bg-white outline-none">
+                      <option value="Exterior">Exterior</option>
+                      <option value="Interior">Interior</option>
+                      <option value="Accesorios">Accesorios</option>
+                      <option value="Documentos">Documentos</option>
+                      <option value="Mecánica">Mecánica</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del ítem</label>
+                    <input required type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej. Extintor" />
+                  </div>
+                  <label className="flex items-center gap-2 p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+                    <input type="checkbox" checked={newItemHasText} onChange={e => setNewItemHasText(e.target.checked)} className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500" />
+                    <span className="text-sm font-medium text-slate-700">Requiere texto (Ej. para detalles/daños)</span>
+                  </label>
+                  <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex justify-center items-center gap-2">
+                    <Plus className="w-5 h-5" /> Agregar Ítem
+                  </button>
+                </form>
+              </div>
+
+              {/* Lista actual */}
+              <div className="md:col-span-2 space-y-6">
+                {[...new Set(checklistTemplate.map(i => i.category))].map(cat => (
+                  <div key={cat} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h4 className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2">{cat}</h4>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {checklistTemplate.filter(i => i.category === cat).map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                          <div>
+                            <span className="font-medium text-slate-700 block text-sm">{item.name}</span>
+                            {item.hasText && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded mt-1 inline-block">Incluye Campo de Texto</span>}
+                          </div>
+                          <button onClick={() => handleDeleteTemplateItem(item.id)} className="text-red-400 hover:text-red-600 p-1" title="Eliminar">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Bottom Navigation Bar (Estilo App) */}
@@ -466,10 +589,17 @@ export default function App() {
           <div className="flex gap-2">
             <button 
               onClick={() => setAdminTab('jobs')}
-              className={`flex flex-col items-center gap-1 p-2 w-16 ${adminTab === 'jobs' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex flex-col items-center gap-1 p-2 w-14 sm:w-16 ${adminTab === 'jobs' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <ClipboardList className="w-6 h-6" />
               <span className="text-[10px] font-bold uppercase tracking-wider">Trabajos</span>
+            </button>
+            <button 
+              onClick={() => setAdminTab('clients')}
+              className={`flex flex-col items-center gap-1 p-2 w-14 sm:w-16 ${adminTab === 'clients' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Users className="w-6 h-6" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Clientes</span>
             </button>
           </div>
 
@@ -487,22 +617,23 @@ export default function App() {
           </div>
 
           <div className="flex gap-2">
-            <button 
-              onClick={() => setAdminTab('clients')}
-              className={`flex flex-col items-center gap-1 p-2 w-16 ${adminTab === 'clients' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Users className="w-6 h-6" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Clientes</span>
-            </button>
-            
             {userRole === 'superadmin' && (
-              <button 
-                onClick={() => setAdminTab('users')}
-                className={`flex flex-col items-center gap-1 p-2 w-16 ${adminTab === 'users' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                <Shield className="w-6 h-6" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Accesos</span>
-              </button>
+              <>
+                <button 
+                  onClick={() => setAdminTab('users')}
+                  className={`flex flex-col items-center gap-1 p-2 w-14 sm:w-16 ${adminTab === 'users' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <Shield className="w-6 h-6" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">Accesos</span>
+                </button>
+                <button 
+                  onClick={() => setAdminTab('settings')}
+                  className={`flex flex-col items-center gap-1 p-2 w-14 sm:w-16 ${adminTab === 'settings' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <Settings className="w-6 h-6" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">Ajustes</span>
+                </button>
+              </>
             )}
           </div>
           
@@ -531,6 +662,7 @@ export default function App() {
       {(showReceptionForm || editingTruck) && (
         <ReceptionForm 
           clients={clients}
+          checklistTemplate={checklistTemplate}
           initialData={editingTruck}
           onClose={() => {
             setShowReceptionForm(false);
@@ -561,6 +693,14 @@ export default function App() {
             const { id, ...dataToSave } = updatedTruck;
             await updateDoc(doc(db, 'trucks', id), dataToSave);
           }}
+        />
+      )}
+
+      {/* Modal Vista Previa Cliente */}
+      {clientPreviewTruck && (
+        <ClientPreviewModal 
+          truck={clientPreviewTruck}
+          onClose={() => setClientPreviewTruck(null)}
         />
       )}
 
@@ -762,32 +902,37 @@ function StatusBadge({ status }) {
   );
 }
 
-function ReceptionForm({ onClose, onSave, initialData, clients }) {
+function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplate }) {
   const [step, setStep] = useState(1);
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [checklistPhotos, setChecklistPhotos] = useState(initialData ? (initialData.checklistPhotos || []) : []);
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
 
-  const [formData, setFormData] = useState(initialData || {
-    ot: '',
-    rut: '',
-    clientName: '',
-    dealership: '',
-    deliveryPerson: '',
-    plate: '',
-    make: '',
-    model: '',
-    vin: '',
-    checklist: {
-      // Exterior
-      luces: false, espejos: false, neumaticos: false, parachoques: false,
-      // Interior
-      tapiz: false, tablero: false, radio: false,
-      // Accesorios
-      herramientas: false, gata: false, extintor: false, botiquin: false,
-      // Documentos
-      padron: false, permiso: false, revision: false, llaves: false
-    },
-    notes: ''
+  const [formData, setFormData] = useState(() => {
+    // Si estamos editando, normalizamos el checklist antiguo (true/false) al nuevo formato {checked, text}
+    if (initialData) {
+      const normalizedChecklist = { ...initialData.checklist };
+      Object.keys(normalizedChecklist).forEach(key => {
+        if (typeof normalizedChecklist[key] === 'boolean') {
+          normalizedChecklist[key] = { checked: normalizedChecklist[key], text: '' };
+        }
+      });
+      return { ...initialData, checklist: normalizedChecklist };
+    }
+    
+    // Si es nuevo, creamos el checklist vacío basado en la plantilla actual
+    const initialChecklist = {};
+    checklistTemplate.forEach(item => {
+      initialChecklist[item.id] = { checked: false, text: '' };
+    });
+
+    return {
+      ot: '', rut: '', clientName: '', dealership: '', deliveryPerson: '',
+      plate: '', make: '', model: '', vin: '',
+      checklist: initialChecklist,
+      notes: ''
+    };
   });
 
   // Funciones para la firma digital
@@ -835,6 +980,28 @@ function ReceptionForm({ onClose, onSave, initialData, clients }) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
+  const handleUploadChecklistPhotos = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    
+    setIsUploadingPhotos(true);
+    try {
+      const newPhotoUrls = [];
+      for (const file of files) {
+        const photoRef = ref(storage, `recepciones/${Date.now()}_${file.name}`);
+        await uploadBytes(photoRef, file);
+        const url = await getDownloadURL(photoRef);
+        newPhotoUrls.push(url);
+      }
+      setChecklistPhotos(prev => [...prev, ...newPhotoUrls]);
+    } catch (error) {
+      console.error("Error subiendo fotos del checklist:", error);
+      alert("Hubo un error al subir las fotos. Revisa tu conexión a internet.");
+    } finally {
+      setIsUploadingPhotos(false);
+    }
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     
@@ -851,10 +1018,19 @@ function ReceptionForm({ onClose, onSave, initialData, clients }) {
     }
   };
 
-  const handleChecklistChange = (item) => {
+  const handleChecklistChange = (itemId) => {
+    const current = formData.checklist[itemId] || { checked: false, text: '' };
     setFormData({
       ...formData,
-      checklist: { ...formData.checklist, [item]: !formData.checklist[item] }
+      checklist: { ...formData.checklist, [itemId]: { ...current, checked: !current.checked } }
+    });
+  };
+
+  const handleChecklistTextChange = (itemId, text) => {
+    const current = formData.checklist[itemId] || { checked: false, text: '' };
+    setFormData({
+      ...formData,
+      checklist: { ...formData.checklist, [itemId]: { ...current, text: text } }
     });
   };
 
@@ -892,7 +1068,8 @@ function ReceptionForm({ onClose, onSave, initialData, clients }) {
       id: initialData ? initialData.id : `CAR-${Math.floor(1000 + Math.random() * 9000)}`,
       status: initialData ? initialData.status : 'A espera de que llegue a taller',
       date: initialData ? initialData.date : new Date().toISOString().split('T')[0],
-      signature: signatureUrl
+      signature: signatureUrl,
+      checklistPhotos: checklistPhotos
     };
     
     await onSave(truckData);
@@ -1010,14 +1187,43 @@ function ReceptionForm({ onClose, onSave, initialData, clients }) {
             {step === 3 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
-                  <ClipboardCheck className="text-blue-500" /> Verificación Visual
+                  <ClipboardCheck className="text-blue-500"/> Verificación Visual
                 </h3>
                 
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                  {renderChecklistCategory("Exterior", ['luces', 'espejos', 'neumaticos', 'parachoques'])}
-                  {renderChecklistCategory("Interior", ['tapiz', 'tablero', 'radio'])}
-                  {renderChecklistCategory("Accesorios", ['herramientas', 'gata', 'extintor', 'botiquin'])}
-                  {renderChecklistCategory("Documentos", ['padron', 'permiso', 'revision', 'llaves'])}
+                  {[...new Set(checklistTemplate.map(i => i.category))].map(cat => {
+                    const items = checklistTemplate.filter(i => i.category === cat);
+                    return (
+                      <div key={cat} className="mb-5">
+                        <h4 className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-1 text-sm uppercase tracking-wider">{cat}</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {items.map(item => {
+                            const itemData = formData.checklist[item.id] || { checked: false, text: '' };
+                            return (
+                              <div key={item.id} className={`p-3 rounded-xl border flex flex-col gap-2 transition-colors shadow-sm ${itemData.checked ? 'border-green-500 bg-green-50' : 'border-slate-200 hover:border-blue-300 bg-white'}`}>
+                                <div className="flex items-center justify-between cursor-pointer" onClick={() => handleChecklistChange(item.id)}>
+                                  <span className="capitalize text-sm font-medium text-slate-700">{item.name}</span>
+                                  <div className={`w-5 h-5 rounded flex items-center justify-center border ${itemData.checked ? 'bg-green-500 border-green-500' : 'border-slate-300'}`}>
+                                    {itemData.checked && <Check className="w-3 h-3 text-white"/>}
+                                  </div>
+                                </div>
+                                {item.hasText && itemData.checked && (
+                                  <input 
+                                    type="text" 
+                                    placeholder="Especificar detalle / daño..." 
+                                    value={itemData.text} 
+                                    onChange={(e) => handleChecklistTextChange(item.id, e.target.value)} 
+                                    className="w-full mt-2 p-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" 
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div className="pt-4 border-t border-slate-200">
@@ -1026,12 +1232,31 @@ function ReceptionForm({ onClose, onSave, initialData, clients }) {
                   </h3>
                   <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
                      <p className="text-sm text-blue-800 mb-2 font-medium">Sube fotos de los 4 costados y detalles.</p>
-                     {/* Simulación de input de archivo que abrirá la cámara en móviles */}
-                     <label className="w-full py-3 bg-white border-2 border-dashed border-blue-300 rounded-xl flex flex-col items-center justify-center text-blue-600 cursor-pointer hover:bg-blue-50 transition-colors">
-                        <ImageIcon className="w-8 h-8 mb-1" />
-                        <span className="text-sm font-medium">Tocar para abrir Cámara/Galería</span>
-                        <input type="file" accept="image/*" multiple className="hidden" />
+                     
+                     <label className={`w-full py-3 bg-white border-2 border-dashed ${isUploadingPhotos ? 'border-slate-300 text-slate-400' : 'border-blue-300 text-blue-600'} rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors`}>
+                        {isUploadingPhotos ? <Loader2 className="w-8 h-8 mb-1 animate-spin" /> : <ImageIcon className="w-8 h-8 mb-1" />}
+                        <span className="text-sm font-medium">{isUploadingPhotos ? 'Subiendo fotos, por favor espera...' : 'Tocar para abrir Cámara/Galería'}</span>
+                        <input type="file" accept="image/*" multiple className="hidden" disabled={isUploadingPhotos} onChange={handleUploadChecklistPhotos} />
                      </label>
+
+                     {/* Galería de fotos subidas en la Recepción */}
+                     {checklistPhotos.length > 0 && (
+                       <div className="flex gap-3 mt-3 overflow-x-auto py-2">
+                         {checklistPhotos.map((url, idx) => (
+                           <div key={idx} className="relative shrink-0 group">
+                             <img src={url} alt="Checklist" className="w-20 h-20 object-cover rounded-xl border border-slate-200 shadow-sm" />
+                             <button 
+                               type="button"
+                               onClick={() => setChecklistPhotos(checklistPhotos.filter((_, i) => i !== idx))}
+                               className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+                               title="Eliminar foto"
+                             >
+                               <X className="w-3 h-3" />
+                             </button>
+                           </div>
+                         ))}
+                       </div>
+                     )}
                   </div>
                 </div>
 
@@ -1280,6 +1505,19 @@ function TruckDetailsModal({ truck, onClose }) {
             </div>
           </div>
 
+          {truck.checklistPhotos && truck.checklistPhotos.length > 0 && (
+            <div>
+              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Camera className="w-5 h-5 text-blue-600"/> Registro Fotográfico</h3>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex gap-3 overflow-x-auto">
+                {truck.checklistPhotos.map((photo, idx) => (
+                  <a key={idx} href={photo} target="_blank" rel="noreferrer" className="shrink-0">
+                    <img src={photo} alt={`Foto Recepción ${idx + 1}`} className="w-32 h-32 object-cover rounded-xl border border-slate-200 hover:opacity-80 transition-opacity" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {truck.notes && (
              <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
                <span className="text-sm font-bold text-yellow-800 flex items-center gap-1 mb-2">
@@ -1472,6 +1710,128 @@ function ProgressModal({ truck, onClose, onUpdate, showToast }) {
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+// --- NUEVO COMPONENTE: VISTA PREVIA DEL CLIENTE ---
+function ClientPreviewModal({ truck, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[110] bg-slate-50 overflow-y-auto animate-in slide-in-from-bottom-4">
+      {/* Header Falso del Portal */}
+      <header className="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto flex justify-between items-center">
+          <div className="font-bold text-lg flex items-center gap-3">
+            <span className="bg-purple-500 text-white text-[10px] px-2 py-1 rounded uppercase tracking-widest font-bold shadow-sm">Vista Previa</span>
+            Portal de Clientes
+          </div>
+          <button onClick={onClose} className="text-white hover:bg-blue-600 px-4 py-1.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors border border-blue-500">
+            <X className="w-4 h-4" /> Cerrar Vista
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto p-4 py-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          {/* Cabecera del Camión */}
+          <div className="p-6 bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold mb-1">Orden de Trabajo: {truck.ot}</h1>
+              <p className="text-slate-400">{truck.make} {truck.model} • Patente: {truck.plate}</p>
+            </div>
+            <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20">
+              <span className="text-sm text-slate-300 block mb-1">Estado Actual</span>
+              <span className="font-bold text-lg flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                {truck.status}
+              </span>
+            </div>
+          </div>
+
+          {/* Barra de Progreso */}
+          <div className="p-6 sm:p-10 border-b border-slate-100 bg-white">
+            <h3 className="text-lg font-bold text-slate-800 mb-8">Progreso de Fabricación</h3>
+            <div className="relative">
+              <div className="absolute left-4 sm:left-1/2 top-0 bottom-0 w-0.5 bg-slate-200 sm:-translate-x-1/2"></div>
+              <div className="space-y-8 relative">
+                {STATUS_STEPS.map((step, index) => {
+                  const currentStepIndex = STATUS_STEPS.indexOf(truck.status);
+                  const isCompleted = index < currentStepIndex;
+                  const isCurrent = index === currentStepIndex;
+                  const isPending = index > currentStepIndex;
+
+                  return (
+                    <div key={step} className={`flex flex-col sm:flex-row items-start gap-4 sm:justify-center w-full relative ${isPending ? 'opacity-40' : ''}`}>
+                      
+                      <div className="flex items-center gap-4 sm:w-1/3 sm:justify-end">
+                        {isCompleted && <span className="text-sm text-slate-500 hidden sm:block">Finalizado</span>}
+                        {isCurrent && <span className="text-sm font-bold text-blue-600 hidden sm:block">En Proceso</span>}
+                        
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-4 bg-white
+                          ${isCompleted ? 'border-green-500 text-green-500' : 
+                            isCurrent ? 'border-blue-600 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'border-slate-300 text-slate-300'}`}
+                        >
+                          {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <div className={`w-2.5 h-2.5 rounded-full ${isCurrent ? 'bg-blue-600' : 'bg-slate-300'}`} />}
+                        </div>
+                      </div>
+
+                      <div className="sm:w-2/3 sm:pl-4 flex flex-col justify-center pb-8 border-l-2 sm:border-l-0 ml-4 sm:ml-0 pl-6 sm:pl-0 border-slate-200">
+                         <h4 className={`font-bold text-lg mb-2 ${isCurrent ? 'text-blue-700' : 'text-slate-800'}`}>{step}</h4>
+                         
+                         {/* Renderizado de Fotos */}
+                         {truck.stagePhotos && truck.stagePhotos[step] && truck.stagePhotos[step].length > 0 && (
+                           <div className="flex gap-3 overflow-x-auto py-2">
+                             {truck.stagePhotos[step].map((photo, idx) => (
+                               <a key={idx} href={photo} target="_blank" rel="noreferrer">
+                                 <img src={photo} alt={`Avance ${step}`} className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-xl border border-slate-200 shadow-sm" />
+                               </a>
+                             ))}
+                           </div>
+                         )}
+                         
+                         {isCurrent && (!truck.stagePhotos || !truck.stagePhotos[step] || truck.stagePhotos[step].length === 0) && (
+                           <p className="text-sm text-slate-500 italic">El equipo está trabajando en esta etapa. Pronto se subirán fotos.</p>
+                         )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Detalles de Recepción - Cliente */}
+          <div className="p-6 bg-slate-50">
+             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+               <MapPin className="text-slate-400" /> Ubicación del Vehículo
+             </h3>
+             <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center gap-4 mb-6">
+               <div className="bg-blue-100 p-3 rounded-lg">
+                  <MapPin className="text-blue-600 w-6 h-6" />
+               </div>
+               <div>
+                  <span className="block font-bold text-slate-800">Planta Maipú</span>
+                  <span className="text-sm text-slate-500">Región Metropolitana, Santiago</span>
+               </div>
+             </div>
+
+             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+               <ClipboardCheck className="text-slate-400" /> Datos de Recepción Original
+             </h3>
+             <div className="grid sm:grid-cols-2 gap-4 text-sm">
+               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <span className="block text-slate-500 mb-1">Fecha de Ingreso</span>
+                  <span className="font-medium text-slate-800">{truck.date}</span>
+               </div>
+               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <span className="block text-slate-500 mb-1">Entregado por</span>
+                  <span className="font-medium text-slate-800">{truck.deliveryPerson} ({truck.dealership})</span>
+               </div>
+             </div>
+          </div>
+
+        </div>
+      </main>
     </div>
   );
 }
