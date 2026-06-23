@@ -52,24 +52,38 @@ export default function App() {
   // --- FIREBASE: Autenticación y Sincronización ---
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        // Verificar Rol
-        if (currentUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
-           setUserRole('superadmin');
-           setCurrentView('admin');
-        } else {
-           const userDoc = await getDoc(doc(db, 'users', currentUser.email.toLowerCase()));
-           if (userDoc.exists() && userDoc.data().role === 'admin') {
-             setUserRole('admin');
+      try {
+        if (currentUser) {
+          setUser(currentUser);
+          // Asegurarnos de que el correo exista (algunos logins raros no traen correo)
+          const userEmail = currentUser.email ? currentUser.email.toLowerCase() : '';
+          const superAdmin = (SUPER_ADMIN_EMAIL || '').toLowerCase();
+          
+          if (userEmail === superAdmin && superAdmin !== '') {
+             setUserRole('superadmin');
              setCurrentView('admin');
-           } else {
-             // Si no es admin ni superadmin, se queda sin acceso administrativo
-             setUserRole('client');
-             setCurrentView('client'); 
-           }
+          } else if (userEmail) {
+             const userDoc = await getDoc(doc(db, 'users', userEmail));
+             if (userDoc.exists() && userDoc.data().role === 'admin') {
+               setUserRole('admin');
+               setCurrentView('admin');
+             } else {
+               setUserRole('client');
+               setCurrentView('client'); 
+             }
+          } else {
+            // Si el usuario no tiene correo asociado
+            setUserRole('client');
+            setCurrentView('client');
+          }
+        } else {
+          setUser(null);
+          setUserRole(null);
+          setCurrentView('login');
         }
-      } else {
+      } catch (error) {
+        console.error("Error validando el usuario:", error);
+        alert("Ocurrió un error al verificar tu cuenta. Revisa la consola para más detalles.");
         setUser(null);
         setUserRole(null);
         setCurrentView('login');
