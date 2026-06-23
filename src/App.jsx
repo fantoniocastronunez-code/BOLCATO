@@ -32,7 +32,8 @@ const STATUS_STEPS = [
   'En trabajo de carrocería',
   'En pintura',
   'Terminaciones',
-  'Listo para entrega'
+  'Listo para entrega',
+  'Terminado'
 ];
 
 export default function App() {
@@ -375,8 +376,8 @@ export default function App() {
                         Avanzar <ArrowRight className="w-4 h-4" />
                       </button>
                     ) : (
-                      <div className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-xl border border-green-200 font-semibold text-sm">
-                        <CheckCircle2 className="w-4 h-4" /> Entregado
+                      <div className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-xl border border-slate-300 font-bold text-sm">
+                        <CheckCircle2 className="w-4 h-4" /> Trabajo Finalizado
                       </div>
                     )}
                   </div>
@@ -893,6 +894,7 @@ function StatusBadge({ status }) {
     'En pintura': 'bg-blue-100 text-blue-700 border-blue-200',
     'Terminaciones': 'bg-purple-100 text-purple-700 border-purple-200',
     'Listo para entrega': 'bg-green-100 text-green-700 border-green-200',
+    'Terminado': 'bg-slate-800 text-white border-slate-900',
   };
   
   return (
@@ -1339,7 +1341,7 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
   );
 }
 
-// --- NUEVO COMPONENTE: DETALLES Y PDF (SOLUCIONADO OKLCH) ---
+// --- NUEVO COMPONENTE: DETALLES Y PDF (SOLUCIÓN DEFINITIVA IFRAME) ---
 function TruckDetailsModal({ truck, template = [], onClose }) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -1355,131 +1357,124 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
       const module = await import('html2pdf.js');
       const html2pdf = module.default ? module.default : module;
 
-      // 1. Creamos una dimensión oculta (iframe) para evitar el choque de colores "oklch"
+      // 1. EL SECRETO PARA EL ERROR OKLCH: Usar un iframe aislado
+      // Esto crea una ventana invisible vacía, sin heredar los estilos problemáticos de Tailwind v4
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
       document.body.appendChild(iframe);
       const doc = iframe.contentWindow.document;
 
-      // 2. Construimos el documento con CSS tradicional (HEX) para un formato Carta Perfecto
+      // 2. HTML puro con estilos estándar inyectados
       const htmlContent = `
         <!DOCTYPE html>
         <html>
-          <head>
-            <style>
-              * { box-sizing: border-box; }
-              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; background: #fff; }
-              #pdf-content { width: 800px; padding: 40px; background: #fff; margin: 0 auto; }
-              .header { border-bottom: 4px solid #0f172a; padding-bottom: 16px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }
-              .title { font-size: 28px; font-weight: 900; text-transform: uppercase; margin: 0 0 4px 0; color: #0f172a; }
-              .subtitle { font-size: 16px; font-weight: bold; color: #64748b; margin: 0; }
-              .ot-box { text-align: right; }
-              .ot-label { font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
-              .ot-number { font-size: 28px; font-weight: 900; color: #1d4ed8; margin: 0; }
-              
-              .grid-2 { display: flex; gap: 24px; margin-bottom: 30px; }
-              .card { background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0; flex: 1; }
-              .card-title { font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 12px 0; }
-              .row { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 8px; font-size: 14px; }
-              .row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-              .label { font-weight: 500; color: #475569; }
-              .value { font-weight: bold; color: #0f172a; }
-              .value.mono { font-family: monospace; }
-              
-              .section-title { font-size: 16px; font-weight: bold; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px; margin-top: 20px; }
-              
-              .checklist-grid { display: flex; flex-wrap: wrap; gap: 12px; }
-              .check-item { width: 31%; display: flex; flex-direction: column; font-size: 13px; margin-bottom: 8px; }
-              .check-header { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #1e293b; }
-              .icon { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; border-radius: 50%; border: 1px solid #ccc; }
-              .icon.yes { color: #16a34a; border-color: #16a34a; background: #dcfce7; }
-              .icon.no { color: #ef4444; border-color: #ef4444; background: #fee2e2; }
-              .check-text { margin-left: 24px; color: #64748b; font-style: italic; font-size: 12px; margin-top: 2px; }
-              
-              .photo-grid { display: flex; flex-wrap: wrap; gap: 12px; }
-              .photo { width: calc(25% - 9px); height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; }
-              
-              .notes-box { background: #fefce8; padding: 16px; border: 1px solid #fef08a; border-radius: 12px; font-size: 14px; color: #854d0e; white-space: pre-line; line-height: 1.5; }
-              
-              .signatures { display: flex; justify-content: space-around; margin-top: 50px; padding-top: 20px; }
-              .sign-col { text-align: center; width: 250px; }
-              .sign-img { height: 80px; object-fit: contain; margin: 0 auto 8px auto; display: block; }
-              .sign-line { border-top: 2px solid #0f172a; padding-top: 8px; font-weight: bold; font-size: 14px; color: #0f172a; text-transform: uppercase; }
-              .sign-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
-            </style>
-          </head>
-          <body>
-            <div id="pdf-content">
-              <div class="header">
-                <div>
-                  <h1 class="title">Acta de Recepción</h1>
-                  <h2 class="subtitle">${truck.clientName} | RUT: ${truck.rut || 'S/N'}</h2>
-                </div>
-                <div class="ot-box">
-                  <div class="ot-label">Orden de Trabajo</div>
-                  <div class="ot-number">${truck.ot || 'S/N'}</div>
-                </div>
+        <head>
+          <style>
+            * { box-sizing: border-box; }
+            body { font-family: Helvetica, Arial, sans-serif; background: white; margin: 0; padding: 0; color: #0f172a; }
+            #pdf-content { width: 800px; padding: 40px; margin: 0 auto; background: white; }
+            .header { border-bottom: 4px solid #0f172a; padding-bottom: 15px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }
+            .title { font-size: 28px; font-weight: 900; text-transform: uppercase; margin: 0 0 5px 0; color: #0f172a; }
+            .subtitle { font-size: 16px; color: #64748b; margin: 0; }
+            .ot-box { text-align: right; }
+            .ot-label { font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+            .ot-num { font-size: 28px; font-weight: 900; color: #1d4ed8; margin: 0; }
+            .cards { display: flex; gap: 20px; margin-bottom: 30px; }
+            .card { flex: 1; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+            .card-title { font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 10px 0; }
+            .row { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 5px; font-size: 14px; }
+            .row.last { border: none; padding-bottom: 0; margin-bottom: 0; }
+            .row span:first-child { color: #475569; }
+            .row span:last-child { font-weight: bold; }
+            .sec-title { font-size: 16px; font-weight: bold; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 15px; }
+            .check-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px; }
+            .check-item { width: 31%; margin-bottom: 10px; font-size: 14px; }
+            .check-title { display: flex; align-items: center; gap: 6px; font-weight: bold; color: #1e293b; }
+            .icon { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+            .icon.yes { border: 1px solid #16a34a; background: #dcfce7; color: #16a34a; }
+            .icon.no { border: 1px solid #ef4444; background: #fee2e2; color: #ef4444; }
+            .check-text { margin-left: 26px; color: #64748b; font-style: italic; font-size: 12px; margin-top: 2px; }
+            .photo-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px; }
+            .photo { width: calc(25% - 8px); height: 130px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; }
+            .notes { background: #fefce8; padding: 15px; border: 1px solid #fef08a; border-radius: 8px; font-size: 14px; color: #854d0e; white-space: pre-line; margin-bottom: 30px; }
+            .signatures { display: flex; justify-content: space-around; margin-top: 40px; padding-top: 20px; }
+            .sig-box { width: 250px; text-align: center; }
+            .sig-img { height: 80px; object-fit: contain; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
+            .sig-line { border-top: 2px solid #0f172a; padding-top: 8px; font-weight: bold; font-size: 14px; color: #0f172a; text-transform: uppercase; }
+            .sig-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+          </style>
+        </head>
+        <body>
+          <div id="pdf-content">
+            <div class="header">
+              <div>
+                <h1 class="title">Acta de Recepción</h1>
+                <h2 class="subtitle">Metalúrgica Bolcato | Cliente: ${truck.clientName} | RUT: ${truck.rut || 'S/N'}</h2>
               </div>
-
-              <div class="grid-2">
-                <div class="card">
-                  <h3 class="card-title">Datos del Vehículo</h3>
-                  <div class="row"><span class="label">Patente:</span><span class="value mono">${truck.plate}</span></div>
-                  <div class="row"><span class="label">VIN / Chasis:</span><span class="value mono">${truck.vin || 'No registrado'}</span></div>
-                  <div class="row"><span class="label">Marca/Modelo:</span><span class="value">${truck.make} ${truck.model}</span></div>
-                </div>
-                <div class="card">
-                  <h3 class="card-title">Detalles de Ingreso</h3>
-                  <div class="row"><span class="label">Fecha:</span><span class="value">${truck.date}</span></div>
-                  <div class="row"><span class="label">Origen:</span><span class="value">${truck.dealership}</span></div>
-                  <div class="row"><span class="label">Entregado por:</span><span class="value">${truck.deliveryPerson}</span></div>
-                </div>
+              <div class="ot-box">
+                <div class="ot-label">Orden de Trabajo</div>
+                <div class="ot-num">${truck.ot || 'S/N'}</div>
               </div>
-
-              <div class="section-title">Verificación de Estado al Recibir</div>
-              <div class="checklist-grid">
-                ${truck.checklist ? Object.keys(truck.checklist).map(item => {
-                  const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
-                  const icon = itemData.checked ? '<span class="icon yes">✔</span>' : '<span class="icon no">✘</span>';
-                  const text = itemData.text ? `<div class="check-text">- ${itemData.text}</div>` : '';
-                  return `
-                    <div class="check-item">
-                      <div class="check-header">${icon} <span style="text-transform:capitalize">${getItemName(item)}</span></div>
-                      ${text}
-                    </div>
-                  `;
-                }).join('') : ''}
-              </div>
-
-              ${truck.checklistPhotos && truck.checklistPhotos.length > 0 ? `
-                <div class="section-title">Registro Fotográfico</div>
-                <div class="photo-grid">
-                  ${truck.checklistPhotos.map(photo => `<img src="${photo}" crossorigin="anonymous" class="photo" />`).join('')}
-                </div>
-              ` : ''}
-
-              ${truck.notes ? `
-                <div class="section-title">Observaciones Finales</div>
-                <div class="notes-box">${truck.notes}</div>
-              ` : ''}
-
-              <div class="signatures">
-                <div class="sign-col">
-                  ${truck.signature ? `<img src="${truck.signature}" crossorigin="anonymous" class="sign-img" />` : `<div style="height: 80px; margin-bottom: 8px;"></div>`}
-                  <div class="sign-line">Firma Quien Entrega</div>
-                  <div class="sign-sub">${truck.deliveryPerson}<br/>${truck.dealership}</div>
-                </div>
-                <div class="sign-col">
-                  <div style="height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;">
-                    <span style="color: #cbd5e1; font-style: italic; font-size: 14px;">(Timbre o Firma)</span>
-                  </div>
-                  <div class="sign-line">Metalúrgica Bolcato</div>
-                  <div class="sign-sub">Recepción Taller<br/>Santiago, Chile</div>
-                </div>
-              </div>
-
             </div>
-          </body>
+
+            <div class="cards">
+              <div class="card">
+                <h3 class="card-title">Datos del Vehículo</h3>
+                <div class="row"><span>Patente:</span><span style="font-family: monospace;">${truck.plate}</span></div>
+                <div class="row"><span>VIN / Chasis:</span><span style="font-family: monospace;">${truck.vin || 'No registrado'}</span></div>
+                <div class="row last"><span>Marca/Modelo:</span><span>${truck.make} ${truck.model}</span></div>
+              </div>
+              <div class="card">
+                <h3 class="card-title">Detalles de Ingreso</h3>
+                <div class="row"><span>Fecha:</span><span>${truck.date}</span></div>
+                <div class="row"><span>Origen:</span><span>${truck.dealership}</span></div>
+                <div class="row last"><span>Entregado por:</span><span>${truck.deliveryPerson}</span></div>
+              </div>
+            </div>
+
+            <h3 class="sec-title">Verificación de Estado al Recibir</h3>
+            <div class="check-grid">
+              ${truck.checklist ? Object.keys(truck.checklist).map(item => {
+                const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
+                const icon = itemData.checked ? '<span class="icon yes">✔</span>' : '<span class="icon no">✘</span>';
+                const text = itemData.text ? `<div class="check-text">- ${itemData.text}</div>` : '';
+                return `
+                  <div class="check-item">
+                    <div class="check-title">${icon} <span style="text-transform: capitalize;">${getItemName(item)}</span></div>
+                    ${text}
+                  </div>
+                `;
+              }).join('') : ''}
+            </div>
+
+            ${truck.checklistPhotos && truck.checklistPhotos.length > 0 ? `
+              <h3 class="sec-title">Registro Fotográfico</h3>
+              <div class="photo-grid">
+                ${truck.checklistPhotos.map(photo => `<img src="${photo}" crossorigin="anonymous" class="photo" />`).join('')}
+              </div>
+            ` : ''}
+
+            ${truck.notes ? `
+              <h3 class="sec-title">Observaciones Finales</h3>
+              <div class="notes">${truck.notes}</div>
+            ` : ''}
+
+            <div class="signatures">
+              <div class="sig-box">
+                ${truck.signature ? `<img src="${truck.signature}" crossorigin="anonymous" class="sig-img" />` : `<div style="height: 80px; margin-bottom: 10px;"></div>`}
+                <div class="sig-line">Firma Quien Entrega</div>
+                <div class="sig-sub">${truck.deliveryPerson}<br/>${truck.dealership}</div>
+              </div>
+              <div class="sig-box">
+                <div style="height: 80px; margin-bottom: 10px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 10px;">
+                  <span style="color: #cbd5e1; font-style: italic; font-size: 14px;">(Timbre o Firma)</span>
+                </div>
+                <div class="sig-line">Metalúrgica Bolcato</div>
+                <div class="sig-sub">Recepción Taller<br/>Santiago, Chile</div>
+              </div>
+            </div>
+          </div>
+        </body>
         </html>
       `;
 
@@ -1487,7 +1482,7 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
       doc.write(htmlContent);
       doc.close();
 
-      // 3. Esperamos que las fotos de Firebase carguen antes de imprimir
+      // 3. Esperamos que las fotos carguen dentro del iframe
       await new Promise((resolve) => {
         const imgs = doc.querySelectorAll('img');
         let loaded = 0;
@@ -1502,14 +1497,14 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
 
       const element = doc.getElementById('pdf-content');
       const opt = {
-        margin:       [10, 0, 15, 0], 
+        margin:       10, 
         filename:     `Acta_Recepcion_${truck.ot || 'SIN-OT'}_${truck.plate}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true, logging: false },
         jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' }
       };
 
-      // 4. Generamos, descargamos y limpiamos el iframe
+      // 4. Generamos, guardamos y limpiamos
       await html2pdf().set(opt).from(element).save();
       document.body.removeChild(iframe);
       
@@ -1521,7 +1516,6 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
     }
   };
 
-  // Retornamos la vista normal en pantalla (Responsiva para el celular)
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-start p-4 sm:p-6 overflow-y-auto">
       <div className="bg-slate-50 w-full max-w-3xl rounded-2xl shadow-xl overflow-hidden mt-10">
@@ -1663,30 +1657,31 @@ function ClientPreviewModal({ truck, onClose }) {
           </div>
 
           {/* Barra de Progreso */}
-          <div className="p-6 sm:p-10 border-b border-slate-100 bg-white">
-            <h3 className="text-lg font-bold text-slate-800 mb-8">Progreso de Fabricación</h3>
-            <div className="relative">
-              <div className="absolute left-4 sm:left-1/2 top-0 bottom-0 w-0.5 bg-slate-200 sm:-translate-x-1/2"></div>
-              <div className="space-y-8 relative">
-                {STATUS_STEPS.map((step, index) => {
-                  const currentStepIndex = STATUS_STEPS.indexOf(truck.status);
-                  const isCompleted = index < currentStepIndex;
-                  const isCurrent = index === currentStepIndex;
-                  const isPending = index > currentStepIndex;
+            <div className="p-6 sm:p-10 border-b border-slate-100 bg-white">
+              <h3 className="text-lg font-bold text-slate-800 mb-8">Progreso de Fabricación</h3>
+              <div className="relative">
+                {/* LA LÍNEA DEL MEDIO: Corregida para anclarse perfectamente a -1px */}
+                <div className="absolute left-[1.1rem] sm:left-1/2 sm:-ml-[1px] top-0 bottom-0 w-[2px] bg-slate-200"></div>
+                <div className="space-y-10 relative">
+                  {STATUS_STEPS.map((step, index) => {
+                    const currentStepIndex = STATUS_STEPS.indexOf(myTruck.status);
+                    const isCompleted = index < currentStepIndex;
+                    const isCurrent = index === currentStepIndex;
+                    const isPending = index > currentStepIndex;
 
-                  return (
-                    <div key={step} className={`flex flex-col sm:flex-row items-start sm:gap-0 gap-4 w-full relative ${isPending ? 'opacity-40' : ''}`}>
-                      
-                      {/* Lado Izquierdo (Móvil: Arriba, PC: Mitad izquierda exacta) */}
-                      <div className="flex items-center gap-4 sm:w-1/2 sm:justify-end sm:pr-8 relative">
-                        {isCompleted && <span className="text-sm text-slate-500 hidden sm:block">Finalizado</span>}
-                        {isCurrent && <span className="text-sm font-bold text-blue-600 hidden sm:block">En Proceso</span>}
+                    return (
+                      <div key={step} className={`flex flex-col sm:flex-row items-start sm:gap-0 gap-4 w-full relative ${isPending ? 'opacity-40' : ''}`}>
                         
-                        {/* El círculo se ancla con posición absoluta al centro exacto en PC */}
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-4 bg-white sm:absolute sm:-right-4
-                          ${isCompleted ? 'border-green-500 text-green-500' : 
-                            isCurrent ? 'border-blue-600 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'border-slate-300 text-slate-300'}`}
-                        >
+                        {/* Lado Izquierdo */}
+                        <div className="flex items-center gap-4 sm:w-1/2 sm:justify-end sm:pr-10 relative">
+                          {isCompleted && <span className="text-sm text-slate-500 hidden sm:block">Finalizado</span>}
+                          {isCurrent && <span className="text-sm font-bold text-blue-600 hidden sm:block">En Proceso</span>}
+                          
+                          {/* El círculo (32px ancho). Para centrarlo en la línea, lo empujamos -16px */}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] bg-white sm:absolute sm:-right-[16px]
+                            ${isCompleted ? 'border-green-500 text-green-500' : 
+                              isCurrent ? 'border-blue-600 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'border-slate-300 text-slate-300'}`}
+                          >
                           {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <div className={`w-2.5 h-2.5 rounded-full ${isCurrent ? 'bg-blue-600' : 'bg-slate-300'}`} />}
                         </div>
                       </div>
