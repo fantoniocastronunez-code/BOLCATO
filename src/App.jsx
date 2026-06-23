@@ -57,7 +57,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [clientPreviewTruck, setClientPreviewTruck] = useState(null);
   
-  const [checklistTemplate, setChecklistTemplate] = useStaaconst [checklistTemplate, setChecklistTemplate] = useState([]);
+  const [checklistTemplate, setChecklistTemplate] = useState([]);
   const [newItemCategory, setNewItemCategory] = useState('Exterior');
   const [newItemName, setNewItemName] = useState('');
   const [newItemHasText, setNewItemHasText] = useState(false);
@@ -69,10 +69,7 @@ export default function App() {
 
   // --- NUEVOS ESTADOS: GESTIÓN DINÁMICA DE ROLES ---
   const [rolesPermissions, setRolesPermissions] = useState({});
-  const [newRoleName, setNewRoleName] = useState('');te([]);
-  const [newItemCategory, setNewItemCategory] = useState('Exterior');
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemHasText, setNewItemHasText] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
