@@ -598,8 +598,28 @@ export default function App() {
   );
 
   const renderClientDashboard = () => {
-    // Simulamos que el cliente inicia sesión y ve su primer camión
     const myTruck = trucks[0];
+
+    // ESCUDO PROTECTOR: Si la base de datos está vacía o cargando, mostramos esto
+    if (!myTruck) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col">
+          <header className="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10">
+            <div className="max-w-4xl mx-auto flex justify-between items-center">
+              <div className="font-bold text-lg">Portal de Clientes</div>
+              <button onClick={handleLogout} className="text-blue-200 hover:text-white flex items-center gap-1 text-sm">
+                <LogOut className="w-4 h-4" /> Salir
+              </button>
+            </div>
+          </header>
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center mt-20">
+            <Truck className="w-16 h-16 text-slate-300 mb-4 mx-auto" />
+            <h2 className="text-2xl font-bold text-slate-700 mb-2">Sin trabajos activos</h2>
+            <p className="text-slate-500">Aún no hay ingresos registrados asociados a tu cuenta o estamos cargando la información...</p>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="min-h-screen bg-slate-50">
