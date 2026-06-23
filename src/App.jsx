@@ -4,13 +4,14 @@ import {
   Clock, ChevronRight, Plus, X, Search, FileText, Image as ImageIcon,
   LogOut, Check, Eye, MapPin, PenTool, Users, ClipboardList,
   Trash2, Edit, ArrowRight, AlertTriangle, ChevronLeft, Mail,
-  Share2, Download
+  Share2, Download, Loader2, Shield, UserPlus
 } from 'lucide-react';
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { db, storage, auth, googleProvider } from './firebase';
 
-const INITIAL_CLIENTS = [];
+const SUPER_ADMIN_EMAIL = "TU_CORREO_AQUI@gmail.com"; // <--- ¡PON TU CORREO DE GMAIL AQUÍ!
 
 const STATUS_STEPS = [
   'A espera de que llegue a taller',
@@ -21,10 +22,14 @@ const STATUS_STEPS = [
   'Listo para entrega'
 ];
 
-const INITIAL_TRUCKS = [];
-
 export default function App() {
-  const [currentView, setCurrentView] = useState('login'); // login, admin, client
+  const [user, setUser] = useState(null);
+  const [userRole, setUserRole] = useState(null); // 'superadmin', 'admin', 'client'
+  const [systemUsers, setSystemUsers] = useState([]);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserRole, setNewUserRole] = useState('admin');
+
+  const [currentView, setCurrentView] = useState('loading'); // Empezamos cargando
   const [trucks, setTrucks] = useState([]);
   const [clients, setClients] = useState([]);
   const [showReceptionForm, setShowReceptionForm] = useState(false);
@@ -34,37 +39,114 @@ export default function App() {
   const [editingTruck, setEditingTruck] = useState(null);
   const [editingClient, setEditingClient] = useState(null);
   const [truckToDelete, setTruckToDelete] = useState(null);
-  const [adminTab, setAdminTab] = useState('jobs'); // jobs, clients
+  const [adminTab, setAdminTab] = useState('jobs'); // jobs, clients, users
+  const [toast, setToast] = useState(null);
 
-  // --- FIREBASE: Sincronización en Tiempo Real ---
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    if (type !== 'loading') {
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
+  // --- FIREBASE: Autenticación y Sincronización ---
   useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        // Verificar Rol
+        if (currentUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+           setUserRole('superadmin');
+           setCurrentView('admin');
+        } else {
+           const userDoc = await getDoc(doc(db, 'users', currentUser.email.toLowerCase()));
+           if (userDoc.exists() && userDoc.data().role === 'admin') {
+             setUserRole('admin');
+             setCurrentView('admin');
+           } else {
+             // Si no es admin ni superadmin, se queda sin acceso administrativo
+             setUserRole('client');
+             setCurrentView('client'); 
+           }
+        }
+      } else {
+        setUser(null);
+        setUserRole(null);
+        setCurrentView('login');
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!user || userRole === 'client') return; 
+
     const unsubTrucks = onSnapshot(collection(db, 'trucks'), (snapshot) => {
       setTrucks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
       setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
+
+    let unsubSystemUsers = () => {};
+    if (userRole === 'superadmin') {
+      unsubSystemUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+        setSystemUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+    }
+
     return () => {
       unsubTrucks();
       unsubClients();
+      unsubSystemUsers();
     };
-  }, []);
+  }, [user, userRole]);
+
+  const handleAddUser = async (e) => {
+    e.preventDefault();
+    if (!newUserEmail) return;
+    showToast('Guardando usuario...', 'loading');
+    await setDoc(doc(db, 'users', newUserEmail.toLowerCase()), { role: newUserRole, email: newUserEmail.toLowerCase() });
+    setNewUserEmail('');
+    showToast('Usuario agregado exitosamente');
+  };
+
+  const handleDeleteUser = async (email) => {
+    showToast('Eliminando usuario...', 'loading');
+    await deleteDoc(doc(db, 'users', email));
+    showToast('Usuario eliminado');
+  };
+
+  const handleLogout = () => {
+    signOut(auth);
+  };
 
   // --- FUNCIONES DE ACCIÓN (FIREBASE) ---
   const handleAdvanceStatus = async (truckId, currentStatus) => {
+    showToast('Actualizando estado...', 'loading');
     const currentIndex = STATUS_STEPS.indexOf(currentStatus);
     if (currentIndex < STATUS_STEPS.length - 1) {
       const nextStatus = STATUS_STEPS[currentIndex + 1];
       await updateDoc(doc(db, 'trucks', truckId), { status: nextStatus });
+      showToast('Estado actualizado correctamente', 'success');
     }
   };
 
   const handleDeleteConfirm = async () => {
     if (truckToDelete) {
+      showToast('Eliminando trabajo...', 'loading');
       await deleteDoc(doc(db, 'trucks', truckToDelete));
       setTruckToDelete(null);
+      showToast('Trabajo eliminado exitosamente', 'success');
     }
   };
+
+  const renderLoading = () => (
+    <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center">
+      <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+      <p className="text-slate-600 font-medium">Verificando acceso...</p>
+    </div>
+  );
 
   const renderLogin = () => (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -75,24 +157,24 @@ export default function App() {
           </div>
         </div>
         <h1 className="text-2xl font-bold text-slate-800 mb-2">Carrocerías App</h1>
-        <p className="text-slate-500 mb-8">Gestión y Seguimiento de Fabricación</p>
+        <p className="text-slate-500 mb-8">Sistema de Gestión y Control</p>
         
-        <div className="space-y-4">
-          <button 
-            onClick={() => setCurrentView('admin')}
-            className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white p-4 rounded-xl font-medium transition-colors shadow-md hover:shadow-lg"
-          >
-            <Settings className="w-5 h-5" />
-            Entrar como Administrador
-          </button>
-          <button 
-            onClick={() => setCurrentView('client')}
-            className="w-full flex items-center justify-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 p-4 rounded-xl font-medium transition-colors border border-blue-200"
-          >
-            <User className="w-5 h-5" />
-            Entrar como Cliente
-          </button>
-        </div>
+        <button 
+          onClick={async () => {
+            showToast('Iniciando sesión...', 'loading');
+            try {
+              await signInWithPopup(auth, googleProvider);
+            } catch (error) {
+              console.error(error);
+              showToast('Error al iniciar sesión', 'error');
+            }
+          }}
+          className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 p-4 rounded-xl font-bold transition-colors shadow-sm"
+        >
+          <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+          Ingresar con Google
+        </button>
+        <p className="text-xs text-slate-400 mt-6">El acceso requiere autorización del Administrador.</p>
       </div>
     </div>
   );
@@ -105,8 +187,9 @@ export default function App() {
           <div className="flex items-center gap-2">
             <Truck className="text-blue-400" />
             <span className="font-bold text-lg">Panel de Control</span>
+            {userRole === 'superadmin' && <span className="hidden sm:inline-block ml-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] uppercase font-bold rounded-full">Super Admin</span>}
           </div>
-          <button onClick={() => setCurrentView('login')} className="text-slate-400 hover:text-white flex items-center gap-2">
+          <button onClick={handleLogout} className="text-slate-400 hover:text-white flex items-center gap-2">
             <span className="hidden sm:inline text-sm">Cerrar Sesión</span>
             <LogOut className="w-5 h-5" />
           </button>
@@ -299,19 +382,82 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Pestaña: Gestión de Usuarios (SOLO SUPER ADMIN) */}
+        {adminTab === 'users' && userRole === 'superadmin' && (
+          <div className="animate-in fade-in">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800">Control de Accesos</h2>
+                <p className="text-slate-500 text-sm mt-1">Otorga permisos a otros administradores para usar la App.</p>
+              </div>
+            </div>
+            
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="md:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5 text-blue-600"/> Dar Acceso</h3>
+                <form onSubmit={handleAddUser} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Correo de Gmail</label>
+                    <input required type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="correo@gmail.com" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Rol</label>
+                    <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                      <option value="admin">Administrador (Control Total)</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition-colors">
+                    Guardar Usuario
+                  </button>
+                </form>
+              </div>
+
+              <div className="md:col-span-2 space-y-3">
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-blue-900 flex items-center gap-2"><Shield className="w-5 h-5 text-blue-600"/> Super Administrador</h4>
+                    <p className="text-sm text-blue-700 mt-1">{SUPER_ADMIN_EMAIL}</p>
+                  </div>
+                  <span className="bg-blue-200 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">Tú</span>
+                </div>
+
+                {systemUsers.map(u => (
+                  <div key={u.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-800">{u.email}</h4>
+                      <p className="text-xs font-mono text-slate-500 mt-1 uppercase">Rol: {u.role}</p>
+                    </div>
+                    <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200" title="Quitar acceso">
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                ))}
+                
+                {systemUsers.length === 0 && (
+                  <div className="text-center p-6 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                    Aún no has agregado otros administradores.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Bottom Navigation Bar (Estilo App) */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 px-6 py-3">
         <div className="max-w-md mx-auto flex justify-between items-center relative">
           
-          <button 
-            onClick={() => setAdminTab('jobs')}
-            className={`flex flex-col items-center gap-1 p-2 ${adminTab === 'jobs' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            <ClipboardList className="w-6 h-6" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Trabajos</span>
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setAdminTab('jobs')}
+              className={`flex flex-col items-center gap-1 p-2 w-16 ${adminTab === 'jobs' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <ClipboardList className="w-6 h-6" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Trabajos</span>
+            </button>
+          </div>
 
           {/* Botón Flotante Central (FAB) */}
           <div className="absolute left-1/2 -translate-x-1/2 -top-8">
@@ -326,13 +472,25 @@ export default function App() {
             </button>
           </div>
 
-          <button 
-            onClick={() => setAdminTab('clients')}
-            className={`flex flex-col items-center gap-1 p-2 ${adminTab === 'clients' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            <Users className="w-6 h-6" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Clientes</span>
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setAdminTab('clients')}
+              className={`flex flex-col items-center gap-1 p-2 w-16 ${adminTab === 'clients' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Users className="w-6 h-6" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Clientes</span>
+            </button>
+            
+            {userRole === 'superadmin' && (
+              <button 
+                onClick={() => setAdminTab('users')}
+                className={`flex flex-col items-center gap-1 p-2 w-16 ${adminTab === 'users' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <Shield className="w-6 h-6" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Accesos</span>
+              </button>
+            )}
+          </div>
           
         </div>
       </div>
@@ -346,10 +504,12 @@ export default function App() {
             setEditingClient(null);
           }}
           onSave={async (clientData) => {
+            showToast('Guardando cliente...', 'loading');
             const { id, ...dataToSave } = clientData;
             await setDoc(doc(db, 'clients', id), dataToSave);
             setShowClientForm(false);
             setEditingClient(null);
+            showToast('Cliente guardado exitosamente');
           }}
         />
       )}
@@ -363,10 +523,12 @@ export default function App() {
             setEditingTruck(null);
           }} 
           onSave={async (truckData) => {
+            showToast('Guardando recepción...', 'loading');
             const { id, ...dataToSave } = truckData;
             await setDoc(doc(db, 'trucks', id), dataToSave);
             setShowReceptionForm(false);
             setEditingTruck(null);
+            showToast('Recepción guardada exitosamente');
           }}
         />
       )}
@@ -380,6 +542,7 @@ export default function App() {
         <ProgressModal 
           truck={progressTruck} 
           onClose={() => setProgressTruck(null)} 
+          showToast={showToast}
           onUpdate={async (updatedTruck) => {
             const { id, ...dataToSave } = updatedTruck;
             await updateDoc(doc(db, 'trucks', id), dataToSave);
@@ -403,6 +566,20 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* TOAST NOTIFICACIÓN GLOBAL POP-UP */}
+      {toast && (
+        <div className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl font-medium animate-in fade-in slide-in-from-top-6 ${
+          toast.type === 'loading' ? 'bg-blue-600 text-white' :
+          toast.type === 'error' ? 'bg-red-600 text-white' :
+          'bg-green-600 text-white'
+        }`}>
+          {toast.type === 'loading' && <Loader2 className="w-5 h-5 animate-spin" />}
+          {toast.type === 'success' && <CheckCircle2 className="w-5 h-5" />}
+          {toast.type === 'error' && <AlertTriangle className="w-5 h-5" />}
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 
@@ -415,7 +592,7 @@ export default function App() {
         <header className="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10">
           <div className="max-w-4xl mx-auto flex justify-between items-center">
             <div className="font-bold text-lg">Portal de Clientes</div>
-            <button onClick={() => setCurrentView('login')} className="text-blue-200 hover:text-white flex items-center gap-1 text-sm">
+            <button onClick={handleLogout} className="text-blue-200 hover:text-white flex items-center gap-1 text-sm">
               <LogOut className="w-4 h-4" /> Salir
             </button>
           </div>
@@ -526,6 +703,7 @@ export default function App() {
 
   return (
     <div className="font-sans text-slate-900 bg-slate-100 min-h-screen">
+      {currentView === 'loading' && renderLoading()}
       {currentView === 'login' && renderLogin()}
       {currentView === 'admin' && renderAdminDashboard()}
       {currentView === 'client' && renderClientDashboard()}
@@ -1141,7 +1319,7 @@ function ClientFormModal({ onClose, onSave, initialData }) {
 }
 
 // --- NUEVO COMPONENTE: MODAL DE AVANCES Y FOTOS ---
-function ProgressModal({ truck, onClose, onUpdate }) {
+function ProgressModal({ truck, onClose, onUpdate, showToast }) {
   const [currentStatus, setCurrentStatus] = useState(truck.status);
   const [photos, setPhotos] = useState(truck.stagePhotos || {});
 
@@ -1151,6 +1329,7 @@ function ProgressModal({ truck, onClose, onUpdate }) {
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
+    showToast('Subiendo fotografía...', 'loading');
     
     try {
       const photoRef = ref(storage, `avances/${truck.id}_${step}_${Date.now()}.png`);
@@ -1162,18 +1341,21 @@ function ProgressModal({ truck, onClose, onUpdate }) {
         [step]: [...(photos[step] || []), url]
       };
       setPhotos(updatedPhotos);
-      onUpdate({ ...truck, status: currentStatus, stagePhotos: updatedPhotos });
+      await onUpdate({ ...truck, status: currentStatus, stagePhotos: updatedPhotos });
+      showToast('Fotografía subida exitosamente', 'success');
     } catch (error) {
       console.error("Error subiendo foto:", error);
-      alert("Error al subir la imagen.");
+      showToast('Error al subir la imagen', 'error');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleStatusChange = (newStatus) => {
+  const handleStatusChange = async (newStatus) => {
+    showToast('Actualizando etapa...', 'loading');
     setCurrentStatus(newStatus);
-    onUpdate({ ...truck, status: newStatus, stagePhotos: photos });
+    await onUpdate({ ...truck, status: newStatus, stagePhotos: photos });
+    showToast(`Etapa cambiada a: ${newStatus}`, 'success');
   };
 
   return (
