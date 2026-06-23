@@ -4,7 +4,7 @@ import {
   Clock, ChevronRight, Plus, X, Search, FileText, Image as ImageIcon,
   LogOut, Check, Eye, MapPin, PenTool, Users, ClipboardList,
   Trash2, Edit, ArrowRight, AlertTriangle, ChevronLeft, Mail,
-  Share2, Download, Loader2, Shield, UserPlus, Smartphone
+  Share2, Download, Loader2, Shield, UserPlus, Smartphone, Megaphone
 } from 'lucide-react';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -57,7 +57,19 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [clientPreviewTruck, setClientPreviewTruck] = useState(null);
   
-  const [checklistTemplate, setChecklistTemplate] = useState([]);
+  const [checklistTemplate, setChecklistTemplate] = useStaaconst [checklistTemplate, setChecklistTemplate] = useState([]);
+  const [newItemCategory, setNewItemCategory] = useState('Exterior');
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemHasText, setNewItemHasText] = useState(false);
+
+  // --- NUEVOS ESTADOS: ANUNCIOS Y ROLES ---
+  const [broadcastData, setBroadcastData] = useState(null);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastInput, setBroadcastInput] = useState('');
+
+  // --- NUEVOS ESTADOS: GESTIÓN DINÁMICA DE ROLES ---
+  const [rolesPermissions, setRolesPermissions] = useState({});
+  const [newRoleName, setNewRoleName] = useState('');te([]);
   const [newItemCategory, setNewItemCategory] = useState('Exterior');
   const [newItemName, setNewItemName] = useState('');
   const [newItemHasText, setNewItemHasText] = useState(false);
@@ -139,11 +151,40 @@ export default function App() {
       }
     });
 
+    // Cargar la configuración de roles y sus pestañas permitidas
+    const unsubRoles = onSnapshot(doc(db, 'settings', 'roles'), (docSnap) => {
+      if (docSnap.exists()) {
+        setRolesPermissions(docSnap.data().permissions || {});
+      } else {
+        const defaultRoles = { admin: { jobs: true, clients: true, users: false, settings: false } };
+        setDoc(doc(db, 'settings', 'roles'), { permissions: defaultRoles });
+      }
+    });
+
+    // Cargar el mensaje global
+    const unsubBroadcast = onSnapshot(doc(db, 'settings', 'broadcast'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setBroadcastData(data);
+        if (data.active) {
+          // Revisamos si el usuario ya cerró ESTE mensaje específico usando localStorage
+          const dismissedId = localStorage.getItem('dismissedBroadcast');
+          if (dismissedId !== data.id) {
+            setShowBroadcastModal(true);
+          }
+        } else {
+          setShowBroadcastModal(false);
+        }
+      }
+    });
+
     return () => {
       unsubTrucks();
       unsubClients();
       unsubSystemUsers();
       unsubSettings();
+      unsubRoles();
+      unsubBroadcast();
     };
   }, [user, userRole]);
 
@@ -184,6 +225,51 @@ export default function App() {
     showToast('Eliminando usuario...', 'loading');
     await deleteDoc(doc(db, 'users', email));
     showToast('Usuario eliminado');
+  };
+
+  // --- ACCIONES DE MATRIZ DE PERMISOS ---
+  const handleCreateRole = async (e) => {
+    e.preventDefault();
+    const roleId = newRoleName.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!roleId || rolesPermissions[roleId]) {
+      alert("El rol ya existe o el nombre no es válido.");
+      return;
+    }
+    
+    const updatedPermissions = {
+      ...rolesPermissions,
+      [roleId]: { jobs: true, clients: false, users: false, settings: false } // por defecto ven trabajos
+    };
+    
+    showToast('Creando rol...', 'loading');
+    await setDoc(doc(db, 'settings', 'roles'), { permissions: updatedPermissions });
+    setNewRoleName('');
+    showToast('Rol creado con éxito');
+  };
+
+  const handleToggleTabPermission = async (roleId, tabKey) => {
+    const currentRolePerms = rolesPermissions[roleId] || {};
+    const updatedPermissions = {
+      ...rolesPermissions,
+      [roleId]: {
+        ...currentRolePerms,
+        [tabKey]: !currentRolePerms[tabKey]
+      }
+    };
+    
+    showToast('Actualizando permisos...', 'loading');
+    await setDoc(doc(db, 'settings', 'roles'), { permissions: updatedPermissions });
+    showToast('Permisos actualizados');
+  };
+
+  const handleDeleteRole = async (roleId) => {
+    if (roleId === 'admin') return alert("No puedes eliminar el rol administrador base.");
+    const updatedPermissions = { ...rolesPermissions };
+    delete updatedPermissions[roleId];
+    
+    showToast('Eliminando rol...', 'loading');
+    await setDoc(doc(db, 'settings', 'roles'), { permissions: updatedPermissions });
+    showToast('Rol eliminado');
   };
 
   const handleLogout = () => {
@@ -476,9 +562,12 @@ export default function App() {
                     <input required type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="correo@gmail.com" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Rol</label>
-                    <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
-                      <option value="admin">Administrador (Control Total)</option>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Rol Asignado</label>
+                    <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white capitalize">
+                      <option value="admin">Administrador Base</option>
+                      {Object.keys(rolesPermissions).filter(r => r !== 'admin').map(roleId => (
+                        <option key={roleId} value={roleId}>{roleId.replace(/_/g, ' ')}</option>
+                      ))}
                     </select>
                   </div>
                   <button type="submit" className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition-colors">
@@ -515,18 +604,128 @@ export default function App() {
                 )}
               </div>
             </div>
+
+            {/* --- NUEVO: MATRIZ DE PERMISOS PARA PESTAÑAS (SOLO SUPER ADMIN) --- */}
+            <div className="mt-12 border-t border-slate-200 pt-8">
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-slate-800">Matriz de Permisos y Pestañas</h3>
+                <p className="text-slate-500 text-sm mt-1">Crea roles y define exactamente qué pestañas de la aplicación tienen permitidas visualizar.</p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-6">
+                {/* Formulario de creación de Rol */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit">
+                  <h4 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider text-blue-600">Nuevo Rol de Trabajo</h4>
+                  <form onSubmit={handleCreateRole} className="space-y-3">
+                    <input 
+                      required 
+                      type="text" 
+                      value={newRoleName} 
+                      onChange={e => setNewRoleName(e.target.value)} 
+                      className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm" 
+                      placeholder="Ej. Inspector de Calidad, Pintor" 
+                    />
+                    <button type="submit" className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-colors">
+                      Crear Rol
+                    </button>
+                  </form>
+                </div>
+
+                {/* Configuración de Toggles por Rol */}
+                <div className="md:col-span-2 space-y-4">
+                  {Object.keys(rolesPermissions).map(roleId => (
+                    <div key={roleId} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="font-bold text-slate-800 capitalize text-base">{roleId.replace(/_/g, ' ')}</h4>
+                        <p className="text-xs text-slate-400 mt-0.5">Permisos de navegación asignados</p>
+                      </div>
+                      
+                      {/* Toggles Interactivos para activar/desactivar pestañas */}
+                      <div className="flex flex-wrap gap-2 sm:gap-3">
+                        {['jobs', 'clients', 'users', 'settings'].map(tabKey => {
+                          const isAllowed = rolesPermissions[roleId]?.[tabKey];
+                          const tabNames = { jobs: 'Trabajos', clients: 'Clientes', users: 'Accesos', settings: 'Ajustes' };
+                          
+                          return (
+                            <button
+                              key={tabKey}
+                              type="button"
+                              onClick={() => handleToggleTabPermission(roleId, tabKey)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                isAllowed 
+                                  ? 'bg-green-100 text-green-700 border-green-300' 
+                                  : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {tabNames[tabKey]}: {isAllowed ? 'ON' : 'OFF'}
+                            </button>
+                          );
+                        })}
+                        
+                        {roleId !== 'admin' && (
+                          <button 
+                            onClick={() => handleDeleteRole(roleId)} 
+                            className="p-1.5 text-red-500 hover:bg-red-50 border border-transparent hover:border-red-100 rounded-lg transition-colors ml-2"
+                            title="Eliminar este Rol"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
 
-        {/* Pestaña: Creador de Checklist (SOLO SUPER ADMIN) */}
+        {/* Pestaña: Ajustes Globales (SOLO SUPER ADMIN) */}
         {adminTab === 'settings' && userRole === 'superadmin' && (
-          <div className="animate-in fade-in">
-            <h2 className="text-2xl font-bold text-slate-800 mb-1">Editor de Checklist</h2>
-            <p className="text-slate-500 text-sm mb-6">Personaliza los ítems de revisión que aparecerán en la recepción de camiones.</p>
+          <div className="animate-in fade-in space-y-8">
             
-            <div className="grid md:grid-cols-3 gap-6">
+            {/* CAJÓN DE AVISOS MASIVOS */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-2xl shadow-md text-white">
+              <h3 className="font-bold text-xl mb-2 flex items-center gap-2"><Megaphone className="w-6 h-6"/> Anuncio Masivo (Pop-up)</h3>
+              <p className="text-blue-100 text-sm mb-5">Envía un mensaje importante que aparecerá en pantalla completa a todos los clientes y usuarios al abrir la aplicación.</p>
+              
+              <form 
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!broadcastInput.trim()) return;
+                  showToast('Publicando anuncio...', 'loading');
+                  await setDoc(doc(db, 'settings', 'broadcast'), { message: broadcastInput, active: true, id: Date.now().toString() });
+                  setBroadcastInput('');
+                  showToast('Anuncio publicado a todos los usuarios');
+                }} 
+                className="flex flex-col sm:flex-row gap-3"
+              >
+                <input type="text" value={broadcastInput} onChange={e => setBroadcastInput(e.target.value)} placeholder="Ej: Taller cerrado por feriado este viernes..." className="flex-1 p-3 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <button type="submit" className="bg-slate-900 hover:bg-slate-800 px-6 py-3 rounded-xl font-bold transition-colors whitespace-nowrap shadow-sm">Publicar Aviso</button>
+                {broadcastData?.active && (
+                  <button type="button" onClick={async () => {
+                    showToast('Apagando anuncio...', 'loading');
+                    await updateDoc(doc(db, 'settings', 'broadcast'), { active: false });
+                    showToast('Anuncio desactivado');
+                  }} className="bg-red-500 hover:bg-red-600 px-6 py-3 rounded-xl font-bold transition-colors whitespace-nowrap shadow-sm">Apagar Aviso</button>
+                )}
+              </form>
+
+              {broadcastData?.active && (
+                <div className="mt-4 text-sm bg-black/20 p-3 rounded-xl inline-flex items-center gap-2 border border-white/10">
+                  <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
+                  <span>Anuncio activo actualmente: <strong className="ml-1">{broadcastData.message}</strong></span>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-1">Editor de Checklist</h2>
+              <p className="text-slate-500 text-sm mb-6">Personaliza los ítems de revisión que aparecerán en la recepción de camiones.</p>
+              <div className="grid md:grid-cols-3 gap-6">
               {/* Formulario para agregar */}
-              <div className="md:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit sticky top-24">
+              <div className="md:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit md:sticky md:top-24">
                 <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Settings className="w-5 h-5 text-blue-600"/> Nuevo Ítem</h3>
                 <form onSubmit={handleSaveTemplateItem} className="space-y-4">
                   <div>
@@ -621,14 +820,14 @@ export default function App() {
                   className={`flex flex-col items-center gap-1 p-2 w-14 sm:w-16 ${adminTab === 'users' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
                 >
                   <Shield className="w-6 h-6" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">Accesos</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Accesos</span>
                 </button>
                 <button 
                   onClick={() => setAdminTab('settings')}
                   className={`flex flex-col items-center gap-1 p-2 w-14 sm:w-16 ${adminTab === 'settings' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
                 >
                   <Settings className="w-6 h-6" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:block">Ajustes</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Ajustes</span>
                 </button>
               </>
             )}
@@ -724,7 +923,7 @@ export default function App() {
 
       {/* TOAST NOTIFICACIÓN GLOBAL POP-UP */}
       {toast && (
-        <div className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl font-medium animate-in fade-in slide-in-from-top-6 ${
+        <div className={`fixed top-6 right-6 z-[150] flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl font-medium animate-in fade-in slide-in-from-top-6 ${
           toast.type === 'loading' ? 'bg-blue-600 text-white' :
           toast.type === 'error' ? 'bg-red-600 text-white' :
           'bg-green-600 text-white'
@@ -735,6 +934,30 @@ export default function App() {
           {toast.message}
         </div>
       )}
+
+      {/* POP-UP MASIVO (BROADCAST) */}
+      {showBroadcastModal && broadcastData?.active && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="bg-white max-w-md w-full rounded-2xl p-8 shadow-2xl text-center animate-in zoom-in-95 border-t-8 border-blue-600">
+            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-blue-100">
+              <Megaphone className="w-10 h-10 text-blue-600" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-800 mb-3 uppercase tracking-tight">Aviso Importante</h3>
+            <p className="text-slate-600 text-lg mb-8 leading-relaxed">{broadcastData.message}</p>
+            <button 
+              onClick={() => {
+                setShowBroadcastModal(false);
+                // Guardamos en la memoria del navegador que este usuario ya leyó ESTE mensaje
+                localStorage.setItem('dismissedBroadcast', broadcastData.id);
+              }} 
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors shadow-lg shadow-blue-600/30 text-lg"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 
@@ -933,7 +1156,12 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
       ot: '', rut: '', clientName: '', dealership: '', deliveryPerson: '',
       plate: '', make: '', model: '', vin: '',
       checklist: initialChecklist,
-      notes: ''
+      notes: '',
+      // Campos de control interno (Excluidos del PDF)
+      estimatedDelivery: '',
+      bodyType: '',
+      dimensions: '',
+      extraInstallations: ''
     };
   });
 
@@ -1182,6 +1410,31 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
                   <label className="block text-sm font-medium text-slate-700 mb-1">VIN (Número de Chasis)</label>
                   <input name="vin" value={formData.vin} onChange={handleInputChange} type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-mono" placeholder="17 caracteres" />
                 </div>
+
+                {/* --- NUEVA SECCIÓN: CONTROL INTERNO (NO SALE EN PDF) --- */}
+                <div className="pt-5 mt-5 border-t border-dashed border-slate-300">
+                  <h4 className="text-xs font-bold text-amber-600 uppercase tracking-widest mb-4 flex items-center gap-1">
+                    <Settings className="w-4 h-4"/> Especificaciones del Trabajo (Uso Interno - No va al PDF)
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Fecha Estimada de Entrega</label>
+                      <input name="estimatedDelivery" value={formData.estimatedDelivery || ''} onChange={handleInputChange} type="date" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-amber-50/30" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Carrocería</label>
+                      <input name="bodyType" value={formData.bodyType || ''} onChange={handleInputChange} type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-amber-50/30" placeholder="Ej. Plana, Furgón, Cortina..." />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Medidas Solicitadas</label>
+                      <input name="dimensions" value={formData.dimensions || ''} onChange={handleInputChange} type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-amber-50/30" placeholder="Ej. 5.50 x 2.60 x 2.40 mts" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Instalaciones Extra</label>
+                      <input name="extraInstallations" value={formData.extraInstallations || ''} onChange={handleInputChange} type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-amber-50/30" placeholder="Ej. Equipo de frío, rampa hidráulica..." />
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1202,24 +1455,41 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
                           {items.map(item => {
                             const itemData = formData.checklist[item.id] || { checked: false, text: '' };
                             return (
-                              <div key={item.id} className={`p-3 rounded-xl border flex flex-col gap-2 transition-colors shadow-sm ${itemData.checked ? 'border-green-500 bg-green-50' : 'border-slate-200 hover:border-blue-300 bg-white'}`}>
-                                <div className="flex items-center justify-between cursor-pointer" onClick={() => handleChecklistChange(item.id)}>
-                                  <span className="capitalize text-sm font-medium text-slate-700">{item.name}</span>
-                                  <div className={`w-5 h-5 rounded flex items-center justify-center border ${itemData.checked ? 'bg-green-500 border-green-500' : 'border-slate-300'}`}>
-                                    {itemData.checked && <Check className="w-3 h-3 text-white"/>}
+                              <button 
+                                key={item.id}
+                                type="button"
+                                onClick={() => handleChecklistChange(item.id)}
+                                className={`relative w-full p-4 rounded-xl border-2 text-left transition-all duration-200 flex flex-col gap-2 outline-none
+                                  ${itemData.checked 
+                                    ? 'bg-green-500 border-green-500 shadow-md shadow-green-500/20' 
+                                    : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm'
+                                  }`}
+                              >
+                                <div className="flex items-center justify-between w-full">
+                                  <span className={`capitalize text-sm font-bold ${itemData.checked ? 'text-white' : 'text-slate-700'}`}>
+                                    {item.name}
+                                  </span>
+                                  
+                                  {/* Círculo del check dinámico */}
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-transform ${itemData.checked ? 'bg-white scale-100' : 'bg-slate-100 scale-90 border border-slate-200'}`}>
+                                    {itemData.checked && <Check className="w-4 h-4 text-green-600 stroke-[3]" />}
                                   </div>
                                 </div>
+                                
+                                {/* Cajón de texto que aparece DENTRO del botón verde */}
                                 {item.hasText && itemData.checked && (
-                                  <input 
-                                    type="text" 
-                                    placeholder="Especificar detalle / daño..." 
-                                    value={itemData.text} 
-                                    onChange={(e) => handleChecklistTextChange(item.id, e.target.value)} 
-                                    className="w-full mt-2 p-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" 
-                                    onClick={e => e.stopPropagation()}
-                                  />
+                                  <div className="w-full animate-in fade-in slide-in-from-top-2 pt-1">
+                                    <input 
+                                      type="text" 
+                                      placeholder="Especificar detalle / daño..." 
+                                      value={itemData.text} 
+                                      onChange={(e) => handleChecklistTextChange(item.id, e.target.value)} 
+                                      className="w-full p-2.5 text-sm bg-white/95 border-0 rounded-lg focus:ring-4 focus:ring-green-300 text-slate-900 placeholder:text-slate-400 focus:bg-white outline-none shadow-inner transition-all" 
+                                      onClick={e => e.stopPropagation()}
+                                    />
+                                  </div>
                                 )}
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
@@ -1341,7 +1611,7 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
   );
 }
 
-// --- NUEVO COMPONENTE: DETALLES Y PDF (SOLUCIÓN DEFINITIVA IFRAME) ---
+// --- NUEVO COMPONENTE: DETALLES Y PDF (ESTRUCTURA DE ALTA COMPATIBILIDAD) ---
 function TruckDetailsModal({ truck, template = [], onClose }) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -1357,122 +1627,164 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
       const module = await import('html2pdf.js');
       const html2pdf = module.default ? module.default : module;
 
-      // 1. EL SECRETO PARA EL ERROR OKLCH: Usar un iframe aislado
-      // Esto crea una ventana invisible vacía, sin heredar los estilos problemáticos de Tailwind v4
+      // 1. CREACIÓN DEL IFRAME FUERA DE PANTALLA (Garantiza que el navegador renderice el CSS)
       const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
+      iframe.style.position = 'absolute';
+      iframe.style.left = '-9999px';
+      iframe.style.top = '0';
+      iframe.style.width = '800px';
+      iframe.style.height = '1400px';
+      iframe.style.border = 'none';
       document.body.appendChild(iframe);
+      
       const doc = iframe.contentWindow.document;
 
-      // 2. HTML puro con estilos estándar inyectados
+      // 2. HTML CON MAQUETACIÓN CORPORATIVA BASADA EN TABLAS
       const htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
+          <meta charset="utf-8">
           <style>
-            * { box-sizing: border-box; }
-            body { font-family: Helvetica, Arial, sans-serif; background: white; margin: 0; padding: 0; color: #0f172a; }
-            #pdf-content { width: 800px; padding: 40px; margin: 0 auto; background: white; }
-            .header { border-bottom: 4px solid #0f172a; padding-bottom: 15px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }
-            .title { font-size: 28px; font-weight: 900; text-transform: uppercase; margin: 0 0 5px 0; color: #0f172a; }
-            .subtitle { font-size: 16px; color: #64748b; margin: 0; }
-            .ot-box { text-align: right; }
-            .ot-label { font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #ffffff; color: #0f172a; margin: 0; padding: 40px; width: 800px; box-sizing: border-box; }
+            .header-table { width: 100%; border-bottom: 4px solid #0f172a; padding-bottom: 15px; margin-bottom: 30px; }
+            .title { font-size: 26px; font-weight: bold; text-transform: uppercase; margin: 0; color: #0f172a; }
+            .subtitle { font-size: 13px; color: #64748b; margin: 5px 0 0 0; font-weight: 500; }
+            .ot-box { text-align: right; vertical-align: bottom; }
+            .ot-label { font-size: 11px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
             .ot-num { font-size: 28px; font-weight: 900; color: #1d4ed8; margin: 0; }
-            .cards { display: flex; gap: 20px; margin-bottom: 30px; }
-            .card { flex: 1; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
-            .card-title { font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 10px 0; }
-            .row { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 5px; font-size: 14px; }
-            .row.last { border: none; padding-bottom: 0; margin-bottom: 0; }
-            .row span:first-child { color: #475569; }
-            .row span:last-child { font-weight: bold; }
-            .sec-title { font-size: 16px; font-weight: bold; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 15px; }
-            .check-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px; }
-            .check-item { width: 31%; margin-bottom: 10px; font-size: 14px; }
-            .check-title { display: flex; align-items: center; gap: 6px; font-weight: bold; color: #1e293b; }
-            .icon { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
-            .icon.yes { border: 1px solid #16a34a; background: #dcfce7; color: #16a34a; }
-            .icon.no { border: 1px solid #ef4444; background: #fee2e2; color: #ef4444; }
-            .check-text { margin-left: 26px; color: #64748b; font-style: italic; font-size: 12px; margin-top: 2px; }
-            .photo-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px; }
-            .photo { width: calc(25% - 8px); height: 130px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; }
-            .notes { background: #fefce8; padding: 15px; border: 1px solid #fef08a; border-radius: 8px; font-size: 14px; color: #854d0e; white-space: pre-line; margin-bottom: 30px; }
-            .signatures { display: flex; justify-content: space-around; margin-top: 40px; padding-top: 20px; }
-            .sig-box { width: 250px; text-align: center; }
-            .sig-img { height: 80px; object-fit: contain; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
-            .sig-line { border-top: 2px solid #0f172a; padding-top: 8px; font-weight: bold; font-size: 14px; color: #0f172a; text-transform: uppercase; }
-            .sig-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+            
+            .info-table { width: 100%; border-collapse: separate; border-spacing: 15px 0; margin-bottom: 25px; }
+            .info-card { width: 50%; background: #f8fafc; padding: 15px; border-radius: 10px; border: 1px solid #e2e8f0; vertical-align: top; }
+            .card-title { font-size: 11px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin: 0 0 12px 0; letter-spacing: 0.5px; }
+            
+            .row-item { font-size: 13px; padding: 6px 0; border-bottom: 1px solid #e2e8f0; }
+            .row-item:last-child { border-bottom: none; }
+            .label { color: #475569; font-weight: 500; }
+            .value { font-weight: bold; color: #0f172a; float: right; }
+            .value-mono { font-weight: bold; color: #0f172a; float: right; font-family: monospace; font-size: 14px; }
+            
+            .sec-title { font-size: 14px; font-weight: bold; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-top: 30px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+            
+            .checklist-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            .check-cell { width: 33.33%; vertical-align: top; padding: 8px 6px; font-size: 13px; }
+            .check-wrapper { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #1e293b; }
+            .badge { width: 18px; height: 18px; border-radius: 50%; display: inline-block; text-align: center; line-height: 17px; font-size: 11px; font-weight: bold; }
+            .badge-yes { background: #dcfce7; color: #16a34a; border: 1px solid #16a34a; }
+            .badge-no { background: #fee2e2; color: #ef4444; border: 1px solid #ef4444; }
+            .check-text { font-size: 11px; color: #64748b; font-style: italic; margin-left: 26px; margin-top: 2px; font-weight: normal; }
+            
+            .photo-container { display: block; width: 100%; margin-bottom: 10px; }
+            .photo-box { display: inline-block; width: 172px; height: 130px; margin-right: 10px; margin-bottom: 10px; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #f8fafc; }
+            .photo-img { width: 100%; height: 100%; object-fit: cover; }
+            
+            .notes { background: #fefce8; padding: 15px; border: 1px solid #fef08a; border-radius: 10px; font-size: 13px; color: #854d0e; white-space: pre-line; line-height: 1.5; }
+            
+            .signature-table { width: 100%; margin-top: 60px; }
+            .sig-cell { width: 50%; text-align: center; vertical-align: bottom; }
+            .sig-img { height: 75px; object-fit: contain; margin: 0 auto 5px auto; display: block; }
+            .sig-line { width: 220px; margin: 0 auto; border-top: 2px solid #0f172a; padding-top: 6px; font-weight: bold; font-size: 13px; text-transform: uppercase; color: #0f172a; }
+            .sig-sub { font-size: 11px; color: #64748b; margin-top: 3px; line-height: 1.3; }
           </style>
         </head>
         <body>
           <div id="pdf-content">
-            <div class="header">
-              <div>
-                <h1 class="title">Acta de Recepción</h1>
-                <h2 class="subtitle">Metalúrgica Bolcato | Cliente: ${truck.clientName} | RUT: ${truck.rut || 'S/N'}</h2>
-              </div>
-              <div class="ot-box">
-                <div class="ot-label">Orden de Trabajo</div>
-                <div class="ot-num">${truck.ot || 'S/N'}</div>
-              </div>
-            </div>
+            
+            <table class="header-table">
+              <tr>
+                <td>
+                  <h1 class="title">Acta de Recepción</h1>
+                  <p class="subtitle">Metalúrgica Bolcato &bull; Cliente: ${truck.clientName} &bull; RUT: ${truck.rut || 'S/N'}</p>
+                </td>
+                <td class="ot-box">
+                  <div class="ot-label">Orden de Trabajo</div>
+                  <p class="ot-num">${truck.ot || 'S/N'}</p>
+                </td>
+              </tr>
+            </table>
 
-            <div class="cards">
-              <div class="card">
-                <h3 class="card-title">Datos del Vehículo</h3>
-                <div class="row"><span>Patente:</span><span style="font-family: monospace;">${truck.plate}</span></div>
-                <div class="row"><span>VIN / Chasis:</span><span style="font-family: monospace;">${truck.vin || 'No registrado'}</span></div>
-                <div class="row last"><span>Marca/Modelo:</span><span>${truck.make} ${truck.model}</span></div>
-              </div>
-              <div class="card">
-                <h3 class="card-title">Detalles de Ingreso</h3>
-                <div class="row"><span>Fecha:</span><span>${truck.date}</span></div>
-                <div class="row"><span>Origen:</span><span>${truck.dealership}</span></div>
-                <div class="row last"><span>Entregado por:</span><span>${truck.deliveryPerson}</span></div>
-              </div>
-            </div>
+            <table class="info-table">
+              <tr>
+                <td class="info-card">
+                  <div class="card-title">Datos del Vehículo</div>
+                  <div class="row-item"><span class="label">Patente:</span><span class="value-mono">${truck.plate}</span></div>
+                  <div class="row-item"><span class="label">VIN / Chasis:</span><span class="value-mono">${truck.vin || 'No registrado'}</span></div>
+                  <div class="row-item"><span class="label">Marca/Modelo:</span><span class="value">${truck.make} ${truck.model}</span></div>
+                </td>
+                <td class="info-card">
+                  <div class="card-title">Detalles de Ingreso</div>
+                  <div class="row-item"><span class="label">Fecha:</span><span class="value">${truck.date}</span></div>
+                  <div class="row-item"><span class="label">Origen:</span><span class="value">${truck.dealership}</span></div>
+                  <div class="row-item"><span class="label">Entregado por:</span><span class="value">${truck.deliveryPerson}</span></div>
+                </td>
+              </tr>
+            </table>
 
-            <h3 class="sec-title">Verificación de Estado al Recibir</h3>
-            <div class="check-grid">
-              ${truck.checklist ? Object.keys(truck.checklist).map(item => {
-                const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
-                const icon = itemData.checked ? '<span class="icon yes">✔</span>' : '<span class="icon no">✘</span>';
-                const text = itemData.text ? `<div class="check-text">- ${itemData.text}</div>` : '';
-                return `
-                  <div class="check-item">
-                    <div class="check-title">${icon} <span style="text-transform: capitalize;">${getItemName(item)}</span></div>
-                    ${text}
-                  </div>
-                `;
-              }).join('') : ''}
-            </div>
+            <div class="sec-title">Verificación de Estado al Recibir</div>
+            <table class="checklist-table">
+              ${(() => {
+                if (!truck.checklist) return '<tr><td>Sin registros asociados</td></tr>';
+                const keys = Object.keys(truck.checklist);
+                let rows = '';
+                for (let i = 0; i < keys.length; i += 3) {
+                  rows += '<tr>';
+                  for (let j = 0; j < 3; j++) {
+                    const item = keys[i + j];
+                    if (item) {
+                      const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
+                      const badgeClass = itemData.checked ? 'badge-yes' : 'badge-no';
+                      const badgeChar = itemData.checked ? '✔' : '✘';
+                      const extraText = itemData.text ? `<div class="check-text">- ${itemData.text}</div>` : '';
+                      rows += `
+                        <td class="check-cell">
+                          <div class="check-wrapper">
+                            <span class="badge ${badgeClass}">${badgeChar}</span>
+                            <span style="text-transform: capitalize;">${getItemName(item)}</span>
+                          </div>
+                          ${extraText}
+                        </td>
+                      `;
+                    } else {
+                      rows += '<td class="check-cell"></td>';
+                    }
+                  }
+                  rows += '</tr>';
+                }
+                return rows;
+              })()}
+            </table>
 
             ${truck.checklistPhotos && truck.checklistPhotos.length > 0 ? `
-              <h3 class="sec-title">Registro Fotográfico</h3>
-              <div class="photo-grid">
-                ${truck.checklistPhotos.map(photo => `<img src="${photo}" crossorigin="anonymous" class="photo" />`).join('')}
+              <div class="sec-title">Registro Fotográfico</div>
+              <div class="photo-container">
+                ${truck.checklistPhotos.map(photo => `
+                  <div class="photo-box">
+                    <img src="${photo}" crossorigin="anonymous" class="photo-img" />
+                  </div>
+                `).join('')}
               </div>
             ` : ''}
 
             ${truck.notes ? `
-              <h3 class="sec-title">Observaciones Finales</h3>
+              <div class="sec-title">Observaciones Finales</div>
               <div class="notes">${truck.notes}</div>
             ` : ''}
 
-            <div class="signatures">
-              <div class="sig-box">
-                ${truck.signature ? `<img src="${truck.signature}" crossorigin="anonymous" class="sig-img" />` : `<div style="height: 80px; margin-bottom: 10px;"></div>`}
-                <div class="sig-line">Firma Quien Entrega</div>
-                <div class="sig-sub">${truck.deliveryPerson}<br/>${truck.dealership}</div>
-              </div>
-              <div class="sig-box">
-                <div style="height: 80px; margin-bottom: 10px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 10px;">
-                  <span style="color: #cbd5e1; font-style: italic; font-size: 14px;">(Timbre o Firma)</span>
-                </div>
-                <div class="sig-line">Metalúrgica Bolcato</div>
-                <div class="sig-sub">Recepción Taller<br/>Santiago, Chile</div>
-              </div>
-            </div>
+            <table class="signature-table">
+              <tr>
+                <td class="sig-cell">
+                  ${truck.signature ? `<img src="${truck.signature}" crossorigin="anonymous" class="sig-img" />` : '<div style="height: 75px;"></div>'}
+                  <div class="sig-line">Firma Quien Entrega</div>
+                  <div class="sig-sub">${truck.deliveryPerson}<br/>${truck.dealership}</div>
+                </td>
+                <td class="sig-cell">
+                  <div style="height: 75px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; color: #cbd5e1; font-style: italic; font-size: 13px;">(Timbre o Firma)</div>
+                  <div class="sig-line">Metalúrgica Bolcato</div>
+                  <div class="sig-sub">Recepción Taller<br/>Santiago, Chile</div>
+                </td>
+              </tr>
+            </table>
+
           </div>
         </body>
         </html>
@@ -1482,7 +1794,7 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
       doc.write(htmlContent);
       doc.close();
 
-      // 3. Esperamos que las fotos carguen dentro del iframe
+      // 3. CONTROL DE RECURSOS: Esperar carga total de imágenes antes de capturar el PDF
       await new Promise((resolve) => {
         const imgs = doc.querySelectorAll('img');
         let loaded = 0;
@@ -1504,18 +1816,19 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
         jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' }
       };
 
-      // 4. Generamos, guardamos y limpiamos
+      // 4. GENERAR, DESCARGAR Y REMOVER CONTENEDOR INVISIBLE
       await html2pdf().set(opt).from(element).save();
       document.body.removeChild(iframe);
       
     } catch (error) {
       console.error("Error al crear PDF:", error);
-      alert("Error al descargar el archivo. Intenta de nuevo.");
+      alert("Error al descargar el archivo. Por favor intente nuevamente.");
     } finally {
       setIsGenerating(false);
     }
   };
 
+  // Renderizado Limpio y Adaptable en Pantalla
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-start p-4 sm:p-6 overflow-y-auto">
       <div className="bg-slate-50 w-full max-w-3xl rounded-2xl shadow-xl overflow-hidden mt-10">
@@ -1562,6 +1875,33 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
               <span className="font-bold text-slate-800 block truncate">{truck.date}</span>
             </div>
           </div>
+
+          {/* --- NUEVA TARJETA EN PANTALLA: PLANIFICACIÓN INTERNA --- */}
+          {(truck.estimatedDelivery || truck.bodyType || truck.dimensions || truck.extraInstallations) && (
+            <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200 shadow-sm">
+              <h4 className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-3 flex items-center gap-1">
+                <Settings className="w-4 h-4 text-amber-600"/> Especificaciones de Taller (Uso Interno)
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                <div>
+                  <span className="text-slate-500 block">F. Entrega Est.:</span>
+                  <span className="font-bold text-slate-800">{truck.estimatedDelivery || 'No fijada'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Tipo Carrocería:</span>
+                  <span className="font-bold text-slate-800">{truck.bodyType || 'No especificado'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Medidas chasis:</span>
+                  <span className="font-bold text-slate-800">{truck.dimensions || 'No registradas'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Equipamiento Extra:</span>
+                  <span className="font-bold text-slate-800">{truck.extraInstallations || 'Ninguno'}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-blue-600"/> Estado al Recibir</h3>
