@@ -10,7 +10,6 @@ import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc } fro
 import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth, googleProvider } from './firebase';
-import html2pdf from 'html2pdf.js';
 
 const SUPER_ADMIN_EMAIL = "fcastro@logisticats.cl";
 
@@ -1346,23 +1345,27 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
 
   const handleDownloadPDF = async () => {
     setIsGenerating(true);
-    // Seleccionamos específicamente la "Hoja" que creamos abajo
-    const element = document.getElementById('documento-pdf');
-    
-    // Configuración para formato Carta (Letter) Vertical
-    const opt = {
-      margin:       [10, 0, 15, 0], // Margen: arriba, izquierda, abajo, derecha
-      filename:     `Acta_Recepcion_${truck.ot || 'SIN-OT'}_${truck.plate}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false }, // useCORS permite cargar las fotos de Firebase
-      jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' }
-    };
-
     try {
+      // 1. Carga dinámica para evitar el colapso en los servidores de Vercel
+      const module = await import('html2pdf.js');
+      const html2pdf = module.default ? module.default : module;
+
+      // 2. Seleccionamos la hoja
+      const element = document.getElementById('documento-pdf');
+      
+      const opt = {
+        margin:       [10, 0, 15, 0], 
+        filename:     `Acta_Recepcion_${truck.ot || 'SIN-OT'}_${truck.plate}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' }
+      };
+
+      // 3. Generamos y descargamos
       await html2pdf().set(opt).from(element).save();
     } catch (error) {
       console.error("Error al crear PDF:", error);
-      alert("Hubo un error al descargar el archivo. Verifica tu conexión a internet.");
+      alert("Error técnico: " + (error.message || "No se pudo generar el archivo."));
     } finally {
       setIsGenerating(false);
     }
@@ -1479,8 +1482,7 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
               </h3>
               <div className="grid grid-cols-4 gap-3">
                 {truck.checklistPhotos.map((photo, idx) => (
-                  // El atributo crossOrigin="anonymous" ayuda a que el PDF no falle al capturar imágenes de la nube
-                  <img key={idx} src={photo} crossOrigin="anonymous" alt={`Recepción ${idx+1}`} className="w-full h-32 object-cover rounded-lg border border-slate-300 shadow-sm" />
+                  <img key={idx} src={photo} alt={`Recepción ${idx+1}`} className="w-full h-32 object-cover rounded-lg border border-slate-300 shadow-sm" />
                 ))}
               </div>
             </div>
@@ -1502,7 +1504,7 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
           <div className="mt-12 pt-8 flex justify-around" style={{ pageBreakInside: 'avoid' }}>
             <div className="w-64 text-center">
               {truck.signature ? (
-                <img src={truck.signature} crossOrigin="anonymous" alt="Firma" className="mx-auto h-20 object-contain mb-2" />
+                <img src={truck.signature} alt="Firma" className="mx-auto h-20 object-contain mb-2" />
               ) : (
                 <div className="h-20 mb-2"></div>
               )}
