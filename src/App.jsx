@@ -38,12 +38,12 @@ const STATUS_STEPS = [
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null); // 'superadmin', 'admin', 'client'
+  const [userRole, setUserRole] = useState(null); 
   const [systemUsers, setSystemUsers] = useState([]);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState('admin');
 
-  const [currentView, setCurrentView] = useState('loading'); // Empezamos cargando
+  const [currentView, setCurrentView] = useState('loading'); 
   const [trucks, setTrucks] = useState([]);
   const [clients, setClients] = useState([]);
   const [showReceptionForm, setShowReceptionForm] = useState(false);
@@ -53,7 +53,7 @@ export default function App() {
   const [editingTruck, setEditingTruck] = useState(null);
   const [editingClient, setEditingClient] = useState(null);
   const [truckToDelete, setTruckToDelete] = useState(null);
-  const [adminTab, setAdminTab] = useState('jobs'); // jobs, clients, users, settings
+  const [adminTab, setAdminTab] = useState('jobs'); 
   const [toast, setToast] = useState(null);
   const [clientPreviewTruck, setClientPreviewTruck] = useState(null);
   
@@ -84,7 +84,6 @@ export default function App() {
       try {
         if (currentUser) {
           setUser(currentUser);
-          // Asegurarnos de que el correo exista (algunos logins raros no traen correo)
           const userEmail = currentUser.email ? currentUser.email.toLowerCase() : '';
           const superAdmin = (SUPER_ADMIN_EMAIL || '').toLowerCase();
           
@@ -101,7 +100,6 @@ export default function App() {
                setCurrentView('client'); 
              }
           } else {
-            // Si el usuario no tiene correo asociado
             setUserRole('client');
             setCurrentView('client');
           }
@@ -148,7 +146,6 @@ export default function App() {
       }
     });
 
-    // Cargar la configuración de roles y sus pestañas permitidas
     const unsubRoles = onSnapshot(doc(db, 'settings', 'roles'), (docSnap) => {
       if (docSnap.exists()) {
         setRolesPermissions(docSnap.data().permissions || {});
@@ -158,13 +155,11 @@ export default function App() {
       }
     });
 
-    // Cargar el mensaje global
     const unsubBroadcast = onSnapshot(doc(db, 'settings', 'broadcast'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setBroadcastData(data);
         if (data.active) {
-          // Revisamos si el usuario ya cerró ESTE mensaje específico usando localStorage
           const dismissedId = localStorage.getItem('dismissedBroadcast');
           if (dismissedId !== data.id) {
             setShowBroadcastModal(true);
@@ -224,7 +219,6 @@ export default function App() {
     showToast('Usuario eliminado');
   };
 
-  // --- ACCIONES DE MATRIZ DE PERMISOS ---
   const handleCreateRole = async (e) => {
     e.preventDefault();
     const roleId = newRoleName.trim().toLowerCase().replace(/\s+/g, '_');
@@ -232,12 +226,10 @@ export default function App() {
       alert("El rol ya existe o el nombre no es válido.");
       return;
     }
-    
     const updatedPermissions = {
       ...rolesPermissions,
-      [roleId]: { jobs: true, clients: false, users: false, settings: false } // por defecto ven trabajos
+      [roleId]: { jobs: true, clients: false, users: false, settings: false } 
     };
-    
     showToast('Creando rol...', 'loading');
     await setDoc(doc(db, 'settings', 'roles'), { permissions: updatedPermissions });
     setNewRoleName('');
@@ -253,7 +245,6 @@ export default function App() {
         [tabKey]: !currentRolePerms[tabKey]
       }
     };
-    
     showToast('Actualizando permisos...', 'loading');
     await setDoc(doc(db, 'settings', 'roles'), { permissions: updatedPermissions });
     showToast('Permisos actualizados');
@@ -263,7 +254,6 @@ export default function App() {
     if (roleId === 'admin') return alert("No puedes eliminar el rol administrador base.");
     const updatedPermissions = { ...rolesPermissions };
     delete updatedPermissions[roleId];
-    
     showToast('Eliminando rol...', 'loading');
     await setDoc(doc(db, 'settings', 'roles'), { permissions: updatedPermissions });
     showToast('Rol eliminado');
@@ -273,7 +263,6 @@ export default function App() {
     signOut(auth);
   };
 
-  // --- FUNCIONES DE ACCIÓN (FIREBASE) ---
   const handleAdvanceStatus = async (truckId, currentStatus) => {
     showToast('Actualizando estado...', 'loading');
     const currentIndex = STATUS_STEPS.indexOf(currentStatus);
@@ -333,7 +322,6 @@ export default function App() {
 
   const renderAdminDashboard = () => (
     <div className="min-h-screen bg-slate-50 pb-24 relative">
-      {/* Header */}
       <header className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-2">
@@ -348,10 +336,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-6xl mx-auto p-4 py-6">
         
-        {/* Pestaña: Trabajos Activos */}
         {adminTab === 'jobs' && (
           <div className="animate-in fade-in">
             <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -394,7 +380,6 @@ export default function App() {
                   </div>
                   
                   <div className="w-full sm:w-auto flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 border-t sm:border-t-0 pt-4 sm:pt-0">
-                    {/* Le agregamos flex-wrap para que los 5 botones no se aprieten en celulares */}
                     <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                       <button 
                         onClick={() => setViewingTruck(truck)}
@@ -404,7 +389,6 @@ export default function App() {
                         <Eye className="w-5 h-5 text-blue-600" />
                       </button>
 
-                      {/* --- NUEVO: Botón Avances y Fotos --- */}
                       <button 
                         onClick={() => setProgressTruck(truck)}
                         className="flex-1 sm:flex-none flex items-center justify-center p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-xl transition-colors shadow-sm"
@@ -413,11 +397,10 @@ export default function App() {
                         <Camera className="w-5 h-5 text-blue-600" />
                       </button>
 
-                      {/* --- NUEVO: Botón WhatsApp --- */}
                       <button 
                         onClick={() => {
                           const urlActual = window.location.origin;
-                          const mensaje = `¡Hola! Somos tu taller de carrocerías.\n\nPuedes ver las fotografías y el avance en tiempo real de tu OT: ${truck.ot || 'Sin OT'} ingresando a nuestro portal de clientes.\n\n👉 Ingresa aquí: ${urlActual}\n🔑 Tu código de proyecto es: ${truck.id}`;
+                          const mensaje = `¡Hola! Somos Metalúrgica Bolcato.\n\nPuedes ver las fotografías y el avance en tiempo real de tu OT: ${truck.ot || 'Sin OT'} ingresando a nuestro portal de clientes.\n\n👉 Ingresa aquí: ${urlActual}\n🔑 Tu código de proyecto es: ${truck.id}`;
                           window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
                         }}
                         className="flex-1 sm:flex-none flex items-center justify-center p-2 bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 rounded-xl transition-colors shadow-sm"
@@ -426,7 +409,6 @@ export default function App() {
                         <Share2 className="w-5 h-5 text-green-600" />
                       </button>
 
-                      {/* --- NUEVO: Botón Vista Cliente --- */}
                       <button 
                         onClick={() => setClientPreviewTruck(truck)}
                         className="flex-1 sm:flex-none flex items-center justify-center p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl transition-colors shadow-sm"
@@ -470,7 +452,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Pestaña: Base de Datos de Clientes */}
         {adminTab === 'clients' && (
           <div className="animate-in fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -485,9 +466,7 @@ export default function App() {
             
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
               {clients.map(client => {
-                // Contador dinámico: Buscamos cuántos camiones coinciden con el RUT de este cliente
                 const jobsCount = trucks.filter(t => t.rut === client.rut).length;
-                
                 return (
                 <div key={client.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4 relative group">
                   <div className="flex items-center gap-4">
@@ -500,7 +479,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Datos de Contacto */}
                   <div className="bg-slate-50 rounded-lg p-3 space-y-2 border border-slate-100">
                     <div className="flex items-center gap-2 text-sm text-slate-600">
                       <User className="w-4 h-4 text-slate-400 shrink-0" /> 
@@ -513,7 +491,6 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                    {/* Indicador de Carrocerías */}
                     <div className="flex items-center gap-2">
                        <span className="text-sm font-medium text-slate-500">Carrocerías:</span>
                        <span className="bg-blue-100 text-blue-700 font-bold px-2.5 py-0.5 rounded-md text-sm">{jobsCount}</span>
@@ -540,7 +517,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Pestaña: Gestión de Usuarios (SOLO SUPER ADMIN) */}
         {adminTab === 'users' && userRole === 'superadmin' && (
           <div className="animate-in fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -602,7 +578,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* --- NUEVO: MATRIZ DE PERMISOS PARA PESTAÑAS (SOLO SUPER ADMIN) --- */}
             <div className="mt-12 border-t border-slate-200 pt-8">
               <div className="mb-6">
                 <h3 className="text-xl font-bold text-slate-800">Matriz de Permisos y Pestañas</h3>
@@ -610,7 +585,6 @@ export default function App() {
               </div>
 
               <div className="grid md:grid-cols-3 gap-6">
-                {/* Formulario de creación de Rol */}
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit">
                   <h4 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider text-blue-600">Nuevo Rol de Trabajo</h4>
                   <form onSubmit={handleCreateRole} className="space-y-3">
@@ -628,7 +602,6 @@ export default function App() {
                   </form>
                 </div>
 
-                {/* Configuración de Toggles por Rol */}
                 <div className="md:col-span-2 space-y-4">
                   {Object.keys(rolesPermissions).map(roleId => (
                     <div key={roleId} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -637,7 +610,6 @@ export default function App() {
                         <p className="text-xs text-slate-400 mt-0.5">Permisos de navegación asignados</p>
                       </div>
                       
-                      {/* Toggles Interactivos para activar/desactivar pestañas */}
                       <div className="flex flex-wrap gap-2 sm:gap-3">
                         {['jobs', 'clients', 'users', 'settings'].map(tabKey => {
                           const isAllowed = rolesPermissions[roleId]?.[tabKey];
@@ -678,11 +650,9 @@ export default function App() {
           </div>
         )}
 
-        {/* Pestaña: Ajustes Globales (SOLO SUPER ADMIN) */}
         {adminTab === 'settings' && userRole === 'superadmin' && (
           <div className="animate-in fade-in space-y-8">
             
-            {/* CAJÓN DE AVISOS MASIVOS */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-2xl shadow-md text-white">
               <h3 className="font-bold text-xl mb-2 flex items-center gap-2"><Megaphone className="w-6 h-6"/> Anuncio Masivo (Pop-up)</h3>
               <p className="text-blue-100 text-sm mb-5">Envía un mensaje importante que aparecerá en pantalla completa a todos los clientes y usuarios al abrir la aplicación.</p>
@@ -721,7 +691,6 @@ export default function App() {
               <h2 className="text-2xl font-bold text-slate-800 mb-1">Editor de Checklist</h2>
               <p className="text-slate-500 text-sm mb-6">Personaliza los ítems de revisión que aparecerán en la recepción de camiones.</p>
               <div className="grid md:grid-cols-3 gap-6">
-              {/* Formulario para agregar */}
               <div className="md:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit md:sticky md:top-24">
                 <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Settings className="w-5 h-5 text-blue-600"/> Nuevo Ítem</h3>
                 <form onSubmit={handleSaveTemplateItem} className="space-y-4">
@@ -749,7 +718,6 @@ export default function App() {
                 </form>
               </div>
 
-              {/* Lista actual */}
               <div className="md:col-span-2 space-y-6">
                 {[...new Set(checklistTemplate.map(i => i.category))].map(cat => (
                   <div key={cat} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -772,12 +740,12 @@ export default function App() {
               </div>
             </div>
           </div>
+        </div>
         )}
       </main>
-      {/* Bottom Navigation Bar (Estilo App) */}
+
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 px-6 py-3">
         <div className="max-w-md mx-auto flex justify-between items-center relative">
-          
           <div className="flex gap-2">
             <button 
               onClick={() => setAdminTab('jobs')}
@@ -795,7 +763,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Botón Flotante Central (FAB) */}
           <div className="absolute left-1/2 -translate-x-1/2 -top-8">
             <button 
               onClick={() => {
@@ -832,7 +799,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* MODALES */}
       {showClientForm && (
         <ClientFormModal 
           initialData={editingClient}
@@ -879,7 +845,6 @@ export default function App() {
         />
       )}
 
-      {/* Modal de Avances y Fotos */}
       {progressTruck && (
         <ProgressModal 
           truck={progressTruck} 
@@ -892,7 +857,6 @@ export default function App() {
         />
       )}
 
-      {/* Modal Vista Previa Cliente */}
       {clientPreviewTruck && (
         <ClientPreviewModal 
           truck={clientPreviewTruck}
@@ -900,7 +864,6 @@ export default function App() {
         />
       )}
 
-      {/* Modal Confirmar Eliminación */}
       {truckToDelete && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
           <div className="bg-white max-w-sm w-full rounded-2xl p-6 shadow-2xl text-center animate-in zoom-in-95">
@@ -917,7 +880,6 @@ export default function App() {
         </div>
       )}
 
-      {/* TOAST NOTIFICACIÓN GLOBAL POP-UP */}
       {toast && (
         <div className={`fixed top-6 right-6 z-[150] flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl font-medium animate-in fade-in slide-in-from-top-6 ${
           toast.type === 'loading' ? 'bg-blue-600 text-white' :
@@ -931,7 +893,6 @@ export default function App() {
         </div>
       )}
 
-      {/* POP-UP MASIVO (BROADCAST) */}
       {showBroadcastModal && broadcastData?.active && (
         <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex justify-center items-center p-4">
           <div className="bg-white max-w-md w-full rounded-2xl p-8 shadow-2xl text-center animate-in zoom-in-95 border-t-8 border-blue-600">
@@ -943,7 +904,6 @@ export default function App() {
             <button 
               onClick={() => {
                 setShowBroadcastModal(false);
-                // Guardamos en la memoria del navegador que este usuario ya leyó ESTE mensaje
                 localStorage.setItem('dismissedBroadcast', broadcastData.id);
               }} 
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors shadow-lg shadow-blue-600/30 text-lg"
@@ -960,7 +920,6 @@ export default function App() {
   const renderClientDashboard = () => {
     const myTruck = trucks[0];
 
-    // ESCUDO PROTECTOR: Si la base de datos está vacía o cargando, mostramos esto
     if (!myTruck) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -994,7 +953,6 @@ export default function App() {
 
         <main className="max-w-4xl mx-auto p-4 py-8">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            {/* Cabecera del Camión */}
             <div className="p-6 bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h1 className="text-2xl font-bold mb-1">Orden de Trabajo: {myTruck.ot}</h1>
@@ -1009,12 +967,11 @@ export default function App() {
               </div>
             </div>
 
-            {/* Barra de Progreso */}
             <div className="p-6 sm:p-10 border-b border-slate-100 bg-white">
               <h3 className="text-lg font-bold text-slate-800 mb-8">Progreso de Fabricación</h3>
               <div className="relative">
-                <div className="absolute left-4 sm:left-1/2 top-0 bottom-0 w-0.5 bg-slate-200 sm:-translate-x-1/2"></div>
-                <div className="space-y-8 relative">
+                <div className="absolute left-[1.1rem] sm:left-1/2 sm:-ml-[1px] top-0 bottom-0 w-[2px] bg-slate-200"></div>
+                <div className="space-y-10 relative">
                   {STATUS_STEPS.map((step, index) => {
                     const currentStepIndex = STATUS_STEPS.indexOf(myTruck.status);
                     const isCompleted = index < currentStepIndex;
@@ -1022,78 +979,78 @@ export default function App() {
                     const isPending = index > currentStepIndex;
 
                     return (
-                      <div key={step} className={`flex flex-col sm:flex-row items-start gap-4 sm:justify-center w-full relative ${isPending ? 'opacity-40' : ''}`}>
+                      <div key={step} className={`flex flex-col sm:flex-row items-start sm:gap-0 gap-4 w-full relative ${isPending ? 'opacity-40' : ''}`}>
                         
-                        <div className="flex items-center gap-4 sm:w-1/3 sm:justify-end">
+                        <div className="flex items-center gap-4 sm:w-1/2 sm:justify-end sm:pr-10 relative">
                           {isCompleted && <span className="text-sm text-slate-500 hidden sm:block">Finalizado</span>}
                           {isCurrent && <span className="text-sm font-bold text-blue-600 hidden sm:block">En Proceso</span>}
                           
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-4 bg-white
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] bg-white sm:absolute sm:-right-[16px]
                             ${isCompleted ? 'border-green-500 text-green-500' : 
                               isCurrent ? 'border-blue-600 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'border-slate-300 text-slate-300'}`}
                           >
-                            {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <div className={`w-2.5 h-2.5 rounded-full ${isCurrent ? 'bg-blue-600' : 'bg-slate-300'}`} />}
-                          </div>
-                        </div>
-
-                        <div className="sm:w-2/3 sm:pl-4 flex flex-col justify-center pb-8 border-l-2 sm:border-l-0 ml-4 sm:ml-0 pl-6 sm:pl-0 border-slate-200">
-                           <h4 className={`font-bold text-lg mb-2 ${isCurrent ? 'text-blue-700' : 'text-slate-800'}`}>{step}</h4>
-                           
-                           {/* Renderizado de Fotos */}
-                           {myTruck.stagePhotos && myTruck.stagePhotos[step] && myTruck.stagePhotos[step].length > 0 && (
-                             <div className="flex gap-3 overflow-x-auto py-2">
-                               {myTruck.stagePhotos[step].map((photo, idx) => (
-                                 <img key={idx} src={photo} alt={`Avance ${step}`} className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-xl border border-slate-200 shadow-sm" />
-                               ))}
-                             </div>
-                           )}
-                           
-                           {isCurrent && (!myTruck.stagePhotos || !myTruck.stagePhotos[step] || myTruck.stagePhotos[step].length === 0) && (
-                             <p className="text-sm text-slate-500 italic">El equipo está trabajando en esta etapa. Pronto se subirán fotos.</p>
-                           )}
+                          {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <div className={`w-2.5 h-2.5 rounded-full ${isCurrent ? 'bg-blue-600' : 'bg-slate-300'}`} />}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      <div className="sm:w-1/2 sm:pl-8 flex flex-col justify-center pb-8 border-l-2 sm:border-l-0 ml-4 sm:ml-0 pl-6 sm:pl-0 border-slate-200">
+                         <h4 className={`font-bold text-lg mb-2 ${isCurrent ? 'text-blue-700' : 'text-slate-800'}`}>{step}</h4>
+                         
+                         {myTruck.stagePhotos && myTruck.stagePhotos[step] && myTruck.stagePhotos[step].length > 0 && (
+                           <div className="flex gap-3 overflow-x-auto py-2">
+                             {myTruck.stagePhotos[step].map((photo, idx) => (
+                               <a key={idx} href={photo} target="_blank" rel="noreferrer">
+                                 <img src={photo} alt={`Avance ${step}`} className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-xl border border-slate-200 shadow-sm" />
+                               </a>
+                             ))}
+                           </div>
+                         )}
+                         
+                         {isCurrent && (!myTruck.stagePhotos || !myTruck.stagePhotos[step] || myTruck.stagePhotos[step].length === 0) && (
+                           <p className="text-sm text-slate-500 italic">El equipo está trabajando en esta etapa. Pronto se subirán fotos.</p>
+                         )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-
-            {/* Detalles de Recepción - Cliente */}
-            <div className="p-6 bg-slate-50">
-               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                 <MapPin className="text-slate-400" /> Ubicación del Vehículo
-               </h3>
-               <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center gap-4 mb-6">
-                 <div className="bg-blue-100 p-3 rounded-lg">
-                    <MapPin className="text-blue-600 w-6 h-6" />
-                 </div>
-                 <div>
-                    <span className="block font-bold text-slate-800">Planta Maipú</span>
-                    <span className="text-sm text-slate-500">Región Metropolitana, Santiago</span>
-                 </div>
-               </div>
-
-               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                 <ClipboardCheck className="text-slate-400" /> Datos de Recepción Original
-               </h3>
-               <div className="grid sm:grid-cols-2 gap-4 text-sm">
-                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <span className="block text-slate-500 mb-1">Fecha de Ingreso</span>
-                    <span className="font-medium text-slate-800">{myTruck.date}</span>
-                 </div>
-                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <span className="block text-slate-500 mb-1">Entregado por</span>
-                    <span className="font-medium text-slate-800">{myTruck.deliveryPerson} ({myTruck.dealership})</span>
-                 </div>
-               </div>
-            </div>
-
           </div>
-        </main>
-      </div>
-    );
-  };
+
+          <div className="p-6 bg-slate-50">
+             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+               <MapPin className="text-slate-400" /> Ubicación del Vehículo
+             </h3>
+             <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center gap-4 mb-6">
+               <div className="bg-blue-100 p-3 rounded-lg">
+                  <MapPin className="text-blue-600 w-6 h-6" />
+               </div>
+               <div>
+                  <span className="block font-bold text-slate-800">Metalúrgica Bolcato</span>
+                  <span className="text-sm text-slate-500">Región Metropolitana, Santiago</span>
+               </div>
+             </div>
+
+             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+               <ClipboardCheck className="text-slate-400" /> Datos de Recepción Original
+             </h3>
+             <div className="grid sm:grid-cols-2 gap-4 text-sm">
+               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <span className="block text-slate-500 mb-1">Fecha de Ingreso</span>
+                  <span className="font-medium text-slate-800">{myTruck.date}</span>
+               </div>
+               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <span className="block text-slate-500 mb-1">Entregado por</span>
+                  <span className="font-medium text-slate-800">{myTruck.deliveryPerson} ({myTruck.dealership})</span>
+               </div>
+             </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  );
+};
 
   return (
     <div className="font-sans text-slate-900 bg-slate-100 min-h-screen">
@@ -1131,7 +1088,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
 
   const [formData, setFormData] = useState(() => {
-    // Si estamos editando, normalizamos el checklist antiguo (true/false) al nuevo formato {checked, text}
     if (initialData) {
       const normalizedChecklist = { ...initialData.checklist };
       Object.keys(normalizedChecklist).forEach(key => {
@@ -1142,7 +1098,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
       return { ...initialData, checklist: normalizedChecklist };
     }
     
-    // Si es nuevo, creamos el checklist vacío basado en la plantilla actual
     const initialChecklist = {};
     checklistTemplate.forEach(item => {
       initialChecklist[item.id] = { checked: false, text: '' };
@@ -1153,7 +1108,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
       plate: '', make: '', model: '', vin: '',
       checklist: initialChecklist,
       notes: '',
-      // Campos de control interno (Excluidos del PDF)
       estimatedDelivery: '',
       bodyType: '',
       dimensions: '',
@@ -1161,7 +1115,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
     };
   });
 
-  // Funciones para la firma digital
   const startDrawing = (e) => {
     setIsDrawing(true);
     draw(e);
@@ -1180,7 +1133,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
-    // Obtener coordenadas reales considerando el scroll y el tamaño del canvas
     const rect = canvas.getBoundingClientRect();
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
@@ -1192,7 +1144,7 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
 
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = '#0f172a'; // slate-900
+    ctx.strokeStyle = '#0f172a'; 
 
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -1231,7 +1183,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     
-    // Autocompletado
     if (name === 'clientName') {
       const foundClient = clients.find(c => c.name.toLowerCase() === value.toLowerCase());
       setFormData({ 
@@ -1302,30 +1253,10 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
     setIsSaving(false);
   };
 
-  const renderChecklistCategory = (title, items) => (
-    <div className="mb-4">
-      <h4 className="font-semibold text-slate-700 mb-2 text-sm uppercase tracking-wider">{title}</h4>
-      <div className="grid grid-cols-2 gap-3">
-        {items.map(item => (
-          <div key={item} 
-               onClick={() => handleChecklistChange(item)}
-               className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between transition-colors shadow-sm
-                ${formData.checklist[item] ? 'border-green-500 bg-green-50' : 'border-slate-200 hover:border-blue-300 bg-white'}`}>
-            <span className="capitalize text-sm font-medium text-slate-700">{item}</span>
-            <div className={`w-5 h-5 rounded flex items-center justify-center border ${formData.checklist[item] ? 'bg-green-500 border-green-500' : 'border-slate-300'}`}>
-              {formData.checklist[item] && <Check className="w-3 h-3 text-white" />}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex justify-center items-end sm:items-center z-50 p-0 sm:p-4 transition-opacity">
       <div className="bg-slate-50 w-full max-w-2xl sm:rounded-2xl h-[95vh] sm:h-auto max-h-[95vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95">
         
-        {/* Header Modal */}
         <div className="flex justify-between items-center p-4 sm:p-6 bg-white border-b border-slate-200 sm:rounded-t-2xl">
           <div>
             <h2 className="text-xl font-bold text-slate-800">
@@ -1338,10 +1269,8 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
           </button>
         </div>
 
-        {/* Contenido Scrollable */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           
-          {/* Progress Tabs */}
           <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
              {[1, 2, 3, 4].map(i => (
                <div key={i} className={`flex-1 h-2 rounded-full min-w-[40px] transition-colors ${step >= i ? 'bg-blue-600' : 'bg-slate-200'}`} />
@@ -1350,7 +1279,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
 
           <form id="reception-form" onSubmit={handleSubmit} onKeyDown={preventSubmitOnEnter}>
             
-            {/* PASO 1: Datos Generales */}
             {step === 1 && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
@@ -1382,7 +1310,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
               </div>
             )}
 
-            {/* PASO 2: Vehículo */}
             {step === 2 && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4">
                  <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
@@ -1407,7 +1334,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
                   <input name="vin" value={formData.vin} onChange={handleInputChange} type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-mono" placeholder="17 caracteres" />
                 </div>
 
-                {/* --- NUEVA SECCIÓN: CONTROL INTERNO (NO SALE EN PDF) --- */}
                 <div className="pt-5 mt-5 border-t border-dashed border-slate-300">
                   <h4 className="text-xs font-bold text-amber-600 uppercase tracking-widest mb-4 flex items-center gap-1">
                     <Settings className="w-4 h-4"/> Especificaciones del Trabajo (Uso Interno - No va al PDF)
@@ -1434,7 +1360,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
               </div>
             )}
 
-            {/* PASO 3: Checklist y Fotos */}
             {step === 3 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
@@ -1466,13 +1391,11 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
                                     {item.name}
                                   </span>
                                   
-                                  {/* Círculo del check dinámico */}
                                   <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-transform ${itemData.checked ? 'bg-white scale-100' : 'bg-slate-100 scale-90 border border-slate-200'}`}>
                                     {itemData.checked && <Check className="w-4 h-4 text-green-600 stroke-[3]" />}
                                   </div>
                                 </div>
                                 
-                                {/* Cajón de texto que aparece DENTRO del botón verde */}
                                 {item.hasText && itemData.checked && (
                                   <div className="w-full animate-in fade-in slide-in-from-top-2 pt-1">
                                     <input 
@@ -1507,7 +1430,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
                         <input type="file" accept="image/*" multiple className="hidden" disabled={isUploadingPhotos} onChange={handleUploadChecklistPhotos} />
                      </label>
 
-                     {/* Galería de fotos subidas en la Recepción */}
                      {checklistPhotos.length > 0 && (
                        <div className="flex gap-3 mt-3 overflow-x-auto py-2">
                          {checklistPhotos.map((url, idx) => (
@@ -1535,7 +1457,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
               </div>
             )}
 
-            {/* PASO 4: Conformidad y Firma */}
             {step === 4 && (
                <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
                  <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
@@ -1583,7 +1504,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
           </form>
         </div>
 
-        {/* Footer Modal / Botones de Navegación */}
         <div className="p-4 sm:p-6 bg-white border-t border-slate-200 sm:rounded-b-2xl flex justify-between gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
           {step > 1 ? (
              <button type="button" onClick={() => setStep(step - 1)} className="px-5 py-3 rounded-xl font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors flex items-center gap-2">
@@ -1607,7 +1527,6 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
   );
 }
 
-// --- NUEVO COMPONENTE: DETALLES Y PDF (ESTRUCTURA DE ALTA COMPATIBILIDAD) ---
 function TruckDetailsModal({ truck, template = [], onClose }) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -1623,7 +1542,6 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
       const module = await import('html2pdf.js');
       const html2pdf = module.default ? module.default : module;
 
-      // 1. CREACIÓN DEL IFRAME FUERA DE PANTALLA (Garantiza que el navegador renderice el CSS)
       const iframe = document.createElement('iframe');
       iframe.style.position = 'absolute';
       iframe.style.left = '-9999px';
@@ -1635,7 +1553,6 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
       
       const doc = iframe.contentWindow.document;
 
-      // 2. HTML CON MAQUETACIÓN CORPORATIVA BASADA EN TABLAS
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -1790,7 +1707,6 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
       doc.write(htmlContent);
       doc.close();
 
-      // 3. CONTROL DE RECURSOS: Esperar carga total de imágenes antes de capturar el PDF
       await new Promise((resolve) => {
         const imgs = doc.querySelectorAll('img');
         let loaded = 0;
@@ -1812,7 +1728,6 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
         jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' }
       };
 
-      // 4. GENERAR, DESCARGAR Y REMOVER CONTENEDOR INVISIBLE
       await html2pdf().set(opt).from(element).save();
       document.body.removeChild(iframe);
       
@@ -1824,7 +1739,6 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
     }
   };
 
-  // Renderizado Limpio y Adaptable en Pantalla
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-start p-4 sm:p-6 overflow-y-auto">
       <div className="bg-slate-50 w-full max-w-3xl rounded-2xl shadow-xl overflow-hidden mt-10">
@@ -1872,7 +1786,6 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
             </div>
           </div>
 
-          {/* --- NUEVA TARJETA EN PANTALLA: PLANIFICACIÓN INTERNA --- */}
           {(truck.estimatedDelivery || truck.bodyType || truck.dimensions || truck.extraInstallations) && (
             <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200 shadow-sm">
               <h4 className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-3 flex items-center gap-1">
@@ -1958,11 +1871,9 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
   );
 }
 
-// --- NUEVO COMPONENTE: VISTA PREVIA DEL CLIENTE ---
 function ClientPreviewModal({ truck, onClose }) {
   return (
     <div className="fixed inset-0 z-[110] bg-slate-50 overflow-y-auto animate-in slide-in-from-bottom-4">
-      {/* Header Falso del Portal */}
       <header className="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <div className="font-bold text-lg flex items-center gap-3">
@@ -1977,7 +1888,6 @@ function ClientPreviewModal({ truck, onClose }) {
 
       <main className="max-w-4xl mx-auto p-4 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          {/* Cabecera del Camión */}
           <div className="p-6 bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-2xl font-bold mb-1">Orden de Trabajo: {truck.ot}</h1>
@@ -1992,15 +1902,12 @@ function ClientPreviewModal({ truck, onClose }) {
             </div>
           </div>
 
-          {/* Barra de Progreso */}
             <div className="p-6 sm:p-10 border-b border-slate-100 bg-white">
               <h3 className="text-lg font-bold text-slate-800 mb-8">Progreso de Fabricación</h3>
               <div className="relative">
-                {/* LA LÍNEA DEL MEDIO */}
                 <div className="absolute left-[1.1rem] sm:left-1/2 sm:-ml-[1px] top-0 bottom-0 w-[2px] bg-slate-200"></div>
                 <div className="space-y-10 relative">
                   {STATUS_STEPS.map((step, index) => {
-                    // AQUÍ ESTABA EL ERROR. AHORA DICE truck.status CORRECTAMENTE
                     const currentStepIndex = STATUS_STEPS.indexOf(truck.status); 
                     const isCompleted = index < currentStepIndex;
                     const isCurrent = index === currentStepIndex;
@@ -2009,12 +1916,10 @@ function ClientPreviewModal({ truck, onClose }) {
                     return (
                       <div key={step} className={`flex flex-col sm:flex-row items-start sm:gap-0 gap-4 w-full relative ${isPending ? 'opacity-40' : ''}`}>
                         
-                        {/* Lado Izquierdo */}
                         <div className="flex items-center gap-4 sm:w-1/2 sm:justify-end sm:pr-10 relative">
                           {isCompleted && <span className="text-sm text-slate-500 hidden sm:block">Finalizado</span>}
                           {isCurrent && <span className="text-sm font-bold text-blue-600 hidden sm:block">En Proceso</span>}
                           
-                          {/* El círculo */}
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] bg-white sm:absolute sm:-right-[16px]
                             ${isCompleted ? 'border-green-500 text-green-500' : 
                               isCurrent ? 'border-blue-600 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'border-slate-300 text-slate-300'}`}
@@ -2023,11 +1928,9 @@ function ClientPreviewModal({ truck, onClose }) {
                         </div>
                       </div>
 
-                      {/* Lado Derecho */}
                       <div className="sm:w-1/2 sm:pl-8 flex flex-col justify-center pb-8 border-l-2 sm:border-l-0 ml-4 sm:ml-0 pl-6 sm:pl-0 border-slate-200">
                          <h4 className={`font-bold text-lg mb-2 ${isCurrent ? 'text-blue-700' : 'text-slate-800'}`}>{step}</h4>
                          
-                         {/* Renderizado de Fotos */}
                          {truck.stagePhotos && truck.stagePhotos[step] && truck.stagePhotos[step].length > 0 && (
                            <div className="flex gap-3 overflow-x-auto py-2">
                              {truck.stagePhotos[step].map((photo, idx) => (
@@ -2049,7 +1952,6 @@ function ClientPreviewModal({ truck, onClose }) {
             </div>
           </div>
 
-          {/* Detalles de Recepción - Cliente */}
           <div className="p-6 bg-slate-50">
              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                <MapPin className="text-slate-400" /> Ubicación del Vehículo
@@ -2085,9 +1987,7 @@ function ClientPreviewModal({ truck, onClose }) {
   );
 }
 
-// --- NUEVO COMPONENTE: MODAL DE AVANCES Y FOTOS (ANTI-CRASH) ---
 function ProgressModal({ truck, onClose, showToast, onUpdate }) {
-  // ESCUDO 1: Si truck.stagePhotos no existe, forzamos a que sea un objeto vacío {}
   const [photos, setPhotos] = useState(truck.stagePhotos || {});
   const [isUploading, setIsUploading] = useState(false);
 
@@ -2107,7 +2007,6 @@ function ProgressModal({ truck, onClose, showToast, onUpdate }) {
         newUrls.push(url);
       }
 
-      // ESCUDO 2: Asegurar de que la etapa actual sea siempre un arreglo, aunque no existiera antes
       const currentStepPhotos = Array.isArray(photos[step]) ? photos[step] : [];
       const updatedPhotos = {
         ...photos,
@@ -2159,12 +2058,10 @@ function ProgressModal({ truck, onClose, showToast, onUpdate }) {
 
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50">
           {STATUS_STEPS.map((step, index) => {
-            // ESCUDO 3: Leemos con seguridad. Si photos[step] es undefined, devuelve un arreglo vacío []
             const stepPhotos = Array.isArray(photos[step]) ? photos[step] : [];
             const currentStepIndex = STATUS_STEPS.indexOf(truck.status);
             const isPastOrCurrent = index <= currentStepIndex;
 
-            // Solo mostramos para subir fotos en las etapas que ya pasaron o en la actual
             if (!isPastOrCurrent) return null;
 
             return (
