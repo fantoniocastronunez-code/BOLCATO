@@ -1339,20 +1339,168 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
   );
 }
 
-// --- NUEVO COMPONENTE: DETALLES Y PDF DIRECTO ---
+// --- NUEVO COMPONENTE: DETALLES Y PDF (SOLUCIONADO OKLCH) ---
 function TruckDetailsModal({ truck, template = [], onClose }) {
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const getItemName = (key) => {
+    const found = template.find(t => t.id === key);
+    if (found) return found.name;
+    return key.replace(/_/g, ' '); 
+  };
 
   const handleDownloadPDF = async () => {
     setIsGenerating(true);
     try {
-      // 1. Carga dinámica para evitar el colapso en los servidores de Vercel
       const module = await import('html2pdf.js');
       const html2pdf = module.default ? module.default : module;
 
-      // 2. Seleccionamos la hoja
-      const element = document.getElementById('documento-pdf');
-      
+      // 1. Creamos una dimensión oculta (iframe) para evitar el choque de colores "oklch"
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentWindow.document;
+
+      // 2. Construimos el documento con CSS tradicional (HEX) para un formato Carta Perfecto
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <style>
+              * { box-sizing: border-box; }
+              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; background: #fff; }
+              #pdf-content { width: 800px; padding: 40px; background: #fff; margin: 0 auto; }
+              .header { border-bottom: 4px solid #0f172a; padding-bottom: 16px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }
+              .title { font-size: 28px; font-weight: 900; text-transform: uppercase; margin: 0 0 4px 0; color: #0f172a; }
+              .subtitle { font-size: 16px; font-weight: bold; color: #64748b; margin: 0; }
+              .ot-box { text-align: right; }
+              .ot-label { font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+              .ot-number { font-size: 28px; font-weight: 900; color: #1d4ed8; margin: 0; }
+              
+              .grid-2 { display: flex; gap: 24px; margin-bottom: 30px; }
+              .card { background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0; flex: 1; }
+              .card-title { font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 12px 0; }
+              .row { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 8px; font-size: 14px; }
+              .row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+              .label { font-weight: 500; color: #475569; }
+              .value { font-weight: bold; color: #0f172a; }
+              .value.mono { font-family: monospace; }
+              
+              .section-title { font-size: 16px; font-weight: bold; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px; margin-top: 20px; }
+              
+              .checklist-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+              .check-item { width: 31%; display: flex; flex-direction: column; font-size: 13px; margin-bottom: 8px; }
+              .check-header { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #1e293b; }
+              .icon { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; border-radius: 50%; border: 1px solid #ccc; }
+              .icon.yes { color: #16a34a; border-color: #16a34a; background: #dcfce7; }
+              .icon.no { color: #ef4444; border-color: #ef4444; background: #fee2e2; }
+              .check-text { margin-left: 24px; color: #64748b; font-style: italic; font-size: 12px; margin-top: 2px; }
+              
+              .photo-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+              .photo { width: calc(25% - 9px); height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; }
+              
+              .notes-box { background: #fefce8; padding: 16px; border: 1px solid #fef08a; border-radius: 12px; font-size: 14px; color: #854d0e; white-space: pre-line; line-height: 1.5; }
+              
+              .signatures { display: flex; justify-content: space-around; margin-top: 50px; padding-top: 20px; }
+              .sign-col { text-align: center; width: 250px; }
+              .sign-img { height: 80px; object-fit: contain; margin: 0 auto 8px auto; display: block; }
+              .sign-line { border-top: 2px solid #0f172a; padding-top: 8px; font-weight: bold; font-size: 14px; color: #0f172a; text-transform: uppercase; }
+              .sign-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+            </style>
+          </head>
+          <body>
+            <div id="pdf-content">
+              <div class="header">
+                <div>
+                  <h1 class="title">Acta de Recepción</h1>
+                  <h2 class="subtitle">${truck.clientName} | RUT: ${truck.rut || 'S/N'}</h2>
+                </div>
+                <div class="ot-box">
+                  <div class="ot-label">Orden de Trabajo</div>
+                  <div class="ot-number">${truck.ot || 'S/N'}</div>
+                </div>
+              </div>
+
+              <div class="grid-2">
+                <div class="card">
+                  <h3 class="card-title">Datos del Vehículo</h3>
+                  <div class="row"><span class="label">Patente:</span><span class="value mono">${truck.plate}</span></div>
+                  <div class="row"><span class="label">VIN / Chasis:</span><span class="value mono">${truck.vin || 'No registrado'}</span></div>
+                  <div class="row"><span class="label">Marca/Modelo:</span><span class="value">${truck.make} ${truck.model}</span></div>
+                </div>
+                <div class="card">
+                  <h3 class="card-title">Detalles de Ingreso</h3>
+                  <div class="row"><span class="label">Fecha:</span><span class="value">${truck.date}</span></div>
+                  <div class="row"><span class="label">Origen:</span><span class="value">${truck.dealership}</span></div>
+                  <div class="row"><span class="label">Entregado por:</span><span class="value">${truck.deliveryPerson}</span></div>
+                </div>
+              </div>
+
+              <div class="section-title">Verificación de Estado al Recibir</div>
+              <div class="checklist-grid">
+                ${truck.checklist ? Object.keys(truck.checklist).map(item => {
+                  const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
+                  const icon = itemData.checked ? '<span class="icon yes">✔</span>' : '<span class="icon no">✘</span>';
+                  const text = itemData.text ? `<div class="check-text">- ${itemData.text}</div>` : '';
+                  return `
+                    <div class="check-item">
+                      <div class="check-header">${icon} <span style="text-transform:capitalize">${getItemName(item)}</span></div>
+                      ${text}
+                    </div>
+                  `;
+                }).join('') : ''}
+              </div>
+
+              ${truck.checklistPhotos && truck.checklistPhotos.length > 0 ? `
+                <div class="section-title">Registro Fotográfico</div>
+                <div class="photo-grid">
+                  ${truck.checklistPhotos.map(photo => `<img src="${photo}" crossorigin="anonymous" class="photo" />`).join('')}
+                </div>
+              ` : ''}
+
+              ${truck.notes ? `
+                <div class="section-title">Observaciones Finales</div>
+                <div class="notes-box">${truck.notes}</div>
+              ` : ''}
+
+              <div class="signatures">
+                <div class="sign-col">
+                  ${truck.signature ? `<img src="${truck.signature}" crossorigin="anonymous" class="sign-img" />` : `<div style="height: 80px; margin-bottom: 8px;"></div>`}
+                  <div class="sign-line">Firma Quien Entrega</div>
+                  <div class="sign-sub">${truck.deliveryPerson}<br/>${truck.dealership}</div>
+                </div>
+                <div class="sign-col">
+                  <div style="height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;">
+                    <span style="color: #cbd5e1; font-style: italic; font-size: 14px;">(Timbre o Firma)</span>
+                  </div>
+                  <div class="sign-line">Metalúrgica Bolcato</div>
+                  <div class="sign-sub">Recepción Taller<br/>Santiago, Chile</div>
+                </div>
+              </div>
+
+            </div>
+          </body>
+        </html>
+      `;
+
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+
+      // 3. Esperamos que las fotos de Firebase carguen antes de imprimir
+      await new Promise((resolve) => {
+        const imgs = doc.querySelectorAll('img');
+        let loaded = 0;
+        if (imgs.length === 0) resolve();
+        imgs.forEach(img => {
+          img.onload = img.onerror = () => {
+            loaded++;
+            if (loaded === imgs.length) resolve();
+          };
+        });
+      });
+
+      const element = doc.getElementById('pdf-content');
       const opt = {
         margin:       [10, 0, 15, 0], 
         filename:     `Acta_Recepcion_${truck.ot || 'SIN-OT'}_${truck.plate}.pdf`,
@@ -1361,339 +1509,119 @@ function TruckDetailsModal({ truck, template = [], onClose }) {
         jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' }
       };
 
-      // 3. Generamos y descargamos
+      // 4. Generamos, descargamos y limpiamos el iframe
       await html2pdf().set(opt).from(element).save();
+      document.body.removeChild(iframe);
+      
     } catch (error) {
       console.error("Error al crear PDF:", error);
-      alert("Error técnico: " + (error.message || "No se pudo generar el archivo."));
+      alert("Error al descargar el archivo. Intenta de nuevo.");
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const getItemName = (key) => {
-    const found = template.find(t => t.id === key);
-    if (found) return found.name;
-    return key.replace(/_/g, ' '); 
-  };
-
+  // Retornamos la vista normal en pantalla (Responsiva para el celular)
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex flex-col items-center p-4 sm:p-8 overflow-y-auto">
-      
-      {/* Barra de Acciones Superior (NO SALE EN EL PDF) */}
-      <div className="w-full max-w-[800px] flex justify-between items-center mb-4 shrink-0">
-        <button onClick={onClose} className="bg-slate-800 hover:bg-slate-700 text-white p-2.5 rounded-xl transition-colors shadow-lg">
-          <X className="w-6 h-6"/>
-        </button>
-        <button 
-          onClick={handleDownloadPDF} 
-          disabled={isGenerating}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-colors shadow-lg disabled:bg-blue-400"
-        >
-          {isGenerating ? <Loader2 className="w-5 h-5 animate-spin"/> : <Download className="w-5 h-5"/>}
-          {isGenerating ? 'Generando Archivo...' : 'Descargar PDF'}
-        </button>
-      </div>
-
-      {/* Contenedor que permite Scroll en Celulares sin romper la hoja */}
-      <div className="w-full max-w-[800px] overflow-x-auto rounded-xl shadow-2xl shrink-0 border border-slate-700 bg-slate-200 p-2 sm:p-0">
+    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-start p-4 sm:p-6 overflow-y-auto">
+      <div className="bg-slate-50 w-full max-w-3xl rounded-2xl shadow-xl overflow-hidden mt-10">
         
-        {/* LA HOJA CARTA REAL (800px de ancho fijo) */}
-        <div id="documento-pdf" className="bg-white text-slate-900 mx-auto relative p-10" style={{ width: '800px', minHeight: '1056px' }}>
-          
-          {/* Encabezado del Documento */}
-          <div className="border-b-4 border-slate-900 pb-4 mb-8 flex justify-between items-end">
-            <div>
-              <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight mb-1">Acta de Recepción</h1>
-              <h2 className="text-lg font-bold text-slate-500 flex items-center gap-2"><User className="w-5 h-5"/> {truck.clientName} | RUT: {truck.rut || 'S/N'}</h2>
+        <div className="p-6 bg-slate-900 text-white flex justify-between items-start sm:items-center">
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <Truck className="w-6 h-6" />
+              Orden de Trabajo: {truck.ot}
+            </h2>
+            <p className="text-slate-400 mt-1">{truck.clientName} | RUT: {truck.rut}</p>
+          </div>
+          <div className="flex gap-2 mt-4 sm:mt-0">
+            <button 
+              onClick={handleDownloadPDF} 
+              disabled={isGenerating}
+              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors shadow-sm disabled:bg-blue-400"
+            >
+              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin"/> : <Download className="w-4 h-4"/>} 
+              <span className="hidden sm:inline">{isGenerating ? 'Generando...' : 'Descargar PDF'}</span>
+            </button>
+            <button onClick={onClose} className="bg-slate-800 hover:bg-slate-700 p-2 rounded-lg transition-colors text-white">
+              <X className="w-5 h-5"/>
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Vehículo</span>
+              <span className="font-bold text-slate-800 block truncate">{truck.make} {truck.model}</span>
             </div>
-            <div className="text-right">
-              <div className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-1">Orden de Trabajo</div>
-              <div className="text-3xl font-black text-blue-700">{truck.ot || 'S/N'}</div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Patente</span>
+              <span className="font-bold text-slate-800 block truncate">{truck.plate}</span>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">VIN</span>
+              <span className="font-bold text-slate-800 block truncate">{truck.vin}</span>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Ingreso</span>
+              <span className="font-bold text-slate-800 block truncate">{truck.date}</span>
             </div>
           </div>
 
-          {/* Bloque 1: Datos de Vehículo y Taller */}
-          <div className="grid grid-cols-2 gap-6 mb-8">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Datos del Vehículo</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between border-b border-slate-200 pb-1">
-                  <span className="font-medium text-slate-600">Patente:</span>
-                  <span className="font-mono font-bold text-slate-900">{truck.plate}</span>
-                </div>
-                <div className="flex justify-between border-b border-slate-200 pb-1">
-                  <span className="font-medium text-slate-600">VIN / Chasis:</span>
-                  <span className="font-mono text-slate-900">{truck.vin || 'No registrado'}</span>
-                </div>
-                <div className="flex justify-between pb-1">
-                  <span className="font-medium text-slate-600">Marca/Modelo:</span>
-                  <span className="font-bold text-slate-900">{truck.make} {truck.model}</span>
-                </div>
-              </div>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Detalles de Ingreso</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between border-b border-slate-200 pb-1">
-                  <span className="font-medium text-slate-600">Fecha:</span>
-                  <span className="font-bold text-slate-900">{truck.date}</span>
-                </div>
-                <div className="flex justify-between border-b border-slate-200 pb-1">
-                  <span className="font-medium text-slate-600">Origen:</span>
-                  <span className="text-slate-900">{truck.dealership}</span>
-                </div>
-                <div className="flex justify-between pb-1">
-                  <span className="font-medium text-slate-600">Entregado por:</span>
-                  <span className="font-bold text-slate-900 truncate max-w-[150px]">{truck.deliveryPerson}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bloque 2: Checklist */}
-          <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
-            <h3 className="text-lg font-bold text-blue-900 border-b-2 border-slate-200 pb-2 mb-4 flex items-center gap-2">
-              <ClipboardCheck className="w-5 h-5"/> Verificación de Estado al Recibir
-            </h3>
-            <div className="grid grid-cols-3 gap-x-6 gap-y-3">
-              {truck.checklist && Object.keys(truck.checklist).map(item => {
-                const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
-                return (
-                  <div key={item} className="flex flex-col gap-1 text-[13px]">
-                    <div className="flex items-center gap-2">
-                      {itemData.checked ? <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" /> : <X className="w-4 h-4 text-red-500 shrink-0" />}
-                      <span className="capitalize font-semibold text-slate-800 truncate">{getItemName(item)}</span>
+          <div>
+            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-blue-600"/> Estado al Recibir</h3>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-2">
+                {truck.checklist && Object.keys(truck.checklist).map(item => {
+                  const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
+                  return (
+                    <div key={item} className="flex flex-col gap-1 text-sm">
+                      <div className="flex items-center gap-2">
+                        {itemData.checked ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-400 shrink-0" />}
+                        <span className="capitalize text-slate-700 font-medium">{getItemName(item)}</span>
+                      </div>
+                      {itemData.text && (
+                        <span className="text-xs text-slate-500 ml-6 italic line-clamp-2">- {itemData.text}</span>
+                      )}
                     </div>
-                    {itemData.text && (
-                      <span className="text-slate-500 ml-6 italic leading-tight">- {itemData.text}</span>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* Bloque 3: Fotos (Con tamaño ajustado para que quepan perfectas en la hoja) */}
           {truck.checklistPhotos && truck.checklistPhotos.length > 0 && (
-            <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
-              <h3 className="text-lg font-bold text-blue-900 border-b-2 border-slate-200 pb-2 mb-4 flex items-center gap-2">
-                <Camera className="w-5 h-5"/> Registro Fotográfico
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
+            <div>
+              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Camera className="w-5 h-5 text-blue-600"/> Registro Fotográfico (Recepción)</h3>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-3">
                 {truck.checklistPhotos.map((photo, idx) => (
-                  <img key={idx} src={photo} alt={`Recepción ${idx+1}`} className="w-full h-32 object-cover rounded-lg border border-slate-300 shadow-sm" />
+                  <a key={idx} href={photo} target="_blank" rel="noreferrer" className="shrink-0 w-24 h-24 sm:w-32 sm:h-32">
+                    <img src={photo} alt={`Foto Recepción ${idx + 1}`} className="w-full h-full object-cover rounded-xl border border-slate-200" />
+                  </a>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Bloque 4: Notas */}
           {truck.notes && (
-            <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
-              <h3 className="text-lg font-bold text-blue-900 border-b-2 border-slate-200 pb-2 mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5"/> Observaciones Finales
-              </h3>
-              <div className="bg-yellow-50/50 p-4 border border-yellow-200 rounded-xl text-sm text-slate-800 whitespace-pre-line leading-relaxed">
+            <div>
+              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileText className="w-5 h-5 text-blue-600"/> Observaciones</h3>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-slate-700 whitespace-pre-line">
                 {truck.notes}
               </div>
             </div>
           )}
 
-          {/* Bloque 5: Firmas */}
-          <div className="mt-12 pt-8 flex justify-around" style={{ pageBreakInside: 'avoid' }}>
-            <div className="w-64 text-center">
-              {truck.signature ? (
-                <img src={truck.signature} alt="Firma" className="mx-auto h-20 object-contain mb-2" />
-              ) : (
-                <div className="h-20 mb-2"></div>
-              )}
-              <div className="border-t-2 border-slate-800 pt-2 font-bold uppercase text-sm text-slate-900">Firma Quien Entrega</div>
-              <div className="text-xs text-slate-500 mt-1">{truck.deliveryPerson}</div>
-              <div className="text-xs text-slate-500">{truck.dealership}</div>
-            </div>
-            <div className="w-64 text-center">
-              <div className="h-20 mb-2 flex items-end justify-center pb-2">
-                <span className="text-slate-300 italic text-sm">(Timbre o Firma)</span>
+          {truck.signature && (
+            <div className="pt-6 pb-4">
+              <div className="w-64 mx-auto text-center">
+                <img src={truck.signature} alt="Firma Cliente" className="w-full h-auto border-b border-slate-800 mb-2" />
+                <p className="font-bold text-slate-800">Firma Conductor / Entrega</p>
+                <p className="text-sm text-slate-500">{truck.deliveryPerson} - {truck.dealership}</p>
               </div>
-              <div className="border-t-2 border-slate-800 pt-2 font-bold uppercase text-sm text-slate-900">Metalúrgica Bolcato</div>
-              <div className="text-xs text-slate-500 mt-1">Santiago, Chile</div>
             </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ClientFormModal({ onClose, onSave, initialData }) {
-  const [formData, setFormData] = useState(initialData || { name: '', rut: '', contactName: '', email: '' });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSave({
-      ...formData,
-      id: initialData ? initialData.id : `CLI-${Date.now()}`
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl animate-in zoom-in-95">
-        <div className="flex justify-between items-center p-6 border-b border-slate-100">
-          <h2 className="text-xl font-bold text-slate-800">
-            {initialData ? 'Editar Cliente' : 'Nuevo Cliente'}
-          </h2>
-          <button onClick={onClose} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors">
-            <X className="w-5 h-5 text-slate-600" />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Nombre de la Empresa / Cliente</label>
-            <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Ej. Transportes SPA" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">RUT</label>
-            <input required type="text" value={formData.rut} onChange={e => setFormData({...formData, rut: e.target.value})} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="12.345.678-9" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del Encargado</label>
-            <input type="text" value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value})} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Ej. Juan Pérez" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Correo Electrónico</label>
-            <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="correo@empresa.com" />
-          </div>
-          <div className="pt-4 flex gap-3">
-            <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors">Cancelar</button>
-            <button type="submit" className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors">Guardar</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// --- NUEVO COMPONENTE: MODAL DE AVANCES Y FOTOS ---
-function ProgressModal({ truck, onClose, onUpdate, showToast }) {
-  const [currentStatus, setCurrentStatus] = useState(truck.status);
-  const [photos, setPhotos] = useState(truck.stagePhotos || {});
-
-  const [isUploading, setIsUploading] = useState(false);
-
-  const handleAddPhoto = async (step, e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setIsUploading(true);
-    showToast('Subiendo fotografía...', 'loading');
-    
-    try {
-      const photoRef = ref(storage, `avances/${truck.id}_${step}_${Date.now()}.png`);
-      await uploadBytes(photoRef, file);
-      const url = await getDownloadURL(photoRef);
-      
-      const updatedPhotos = {
-        ...photos,
-        [step]: [...(photos[step] || []), url]
-      };
-      setPhotos(updatedPhotos);
-      await onUpdate({ ...truck, status: currentStatus, stagePhotos: updatedPhotos });
-      showToast('Fotografía subida exitosamente', 'success');
-    } catch (error) {
-      console.error("Error subiendo foto:", error);
-      showToast('Error al subir la imagen', 'error');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleStatusChange = async (newStatus) => {
-    showToast('Actualizando etapa...', 'loading');
-    setCurrentStatus(newStatus);
-    await onUpdate({ ...truck, status: newStatus, stagePhotos: photos });
-    showToast(`Etapa cambiada a: ${newStatus}`, 'success');
-  };
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex justify-center items-end sm:items-center z-50 p-0 sm:p-4 pb-16 sm:pb-4">
-      <div className="bg-white w-full max-w-2xl sm:rounded-2xl h-[85vh] sm:h-auto sm:max-h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-4">
-        <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50 sm:rounded-t-2xl">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-              <Camera className="text-blue-600" /> Avances de Carrocería
-            </h2>
-            <p className="text-sm text-slate-500 mt-1">OT: <span className="font-bold text-blue-700">{truck.ot}</span> • {truck.clientName}</p>
-          </div>
-          <button onClick={onClose} className="p-2 bg-white hover:bg-slate-200 border border-slate-200 rounded-full transition-colors">
-            <X className="w-5 h-5 text-slate-600" />
-          </button>
-        </div>
-        
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1 bg-slate-100">
-          {STATUS_STEPS.map((step, index) => {
-            const stepPhotos = photos[step] || [];
-            const isCurrent = currentStatus === step;
-            
-            return (
-              <div key={step} className={`p-4 rounded-xl border-2 transition-all shadow-sm ${isCurrent ? 'border-blue-500 bg-blue-50' : 'border-transparent bg-white'}`}>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                      {index + 1}
-                    </div>
-                    <h4 className={`font-bold text-lg ${isCurrent ? 'text-blue-800' : 'text-slate-700'}`}>{step}</h4>
-                  </div>
-                  
-                  <div className="flex flex-wrap items-center gap-2">
-                    {!isCurrent && (
-                      <button 
-                        onClick={() => handleStatusChange(step)}
-                        className="px-3 py-2 text-xs font-bold bg-white border border-slate-300 hover:border-slate-400 text-slate-600 rounded-lg transition-colors"
-                      >
-                        Fijar como Actual
-                      </button>
-                    )}
-                    <label className={`flex items-center gap-2 px-3 py-2 text-xs font-bold ${isUploading ? 'bg-slate-400' : 'bg-slate-800 hover:bg-slate-900'} text-white rounded-lg transition-colors cursor-pointer`}>
-                      <Camera className="w-4 h-4" /> {isUploading ? 'Subiendo...' : 'Subir Foto'}
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        className="hidden" 
-                        disabled={isUploading}
-                        onChange={(e) => handleAddPhoto(step, e)} 
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                {stepPhotos.length > 0 ? (
-                  <div className="flex gap-3 overflow-x-auto py-2">
-                    {stepPhotos.map((photoUrl, i) => (
-                      <div key={i} className="relative group shrink-0">
-                        <img src={photoUrl} className="w-28 h-28 object-cover rounded-xl border border-slate-200 shadow-sm" alt="Avance" />
-                        <button 
-                          onClick={() => {
-                            const newPhotos = { ...photos, [step]: stepPhotos.filter((_, idx) => idx !== i) };
-                            setPhotos(newPhotos);
-                            onUpdate({ ...truck, status: currentStatus, stagePhotos: newPhotos });
-                          }}
-                          className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-slate-400 italic bg-white/50 p-3 rounded-lg border border-dashed border-slate-200">
-                    Aún no hay fotografías en esta etapa.
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          )}
         </div>
       </div>
     </div>
