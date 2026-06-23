@@ -11,7 +11,7 @@ import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth, googleProvider } from './firebase';
 
-const SUPER_ADMIN_EMAIL = "TU_CORREO_AQUI@gmail.com"; // <--- ¡PON TU CORREO DE GMAIL AQUÍ!
+const SUPER_ADMIN_EMAIL = "fcastro@logisticats.cl";
 
 const STATUS_STEPS = [
   'A espera de que llegue a taller',
