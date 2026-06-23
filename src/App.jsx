@@ -10,6 +10,7 @@ import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc } fro
 import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, storage, auth, googleProvider } from './firebase';
+import html2pdf from 'html2pdf.js';
 
 const SUPER_ADMIN_EMAIL = "fcastro@logisticats.cl";
 
@@ -291,7 +292,7 @@ export default function App() {
                     </div>
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="font-bold text-slate-800 text-lg">{truck.id}</span>
+                        <span className="font-bold text-slate-800 text-lg">OT: {truck.ot || 'Sin OT'}</span>
                         <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-xs font-mono border border-slate-200 shadow-sm">
                           {truck.plate}
                         </span>
@@ -304,10 +305,6 @@ export default function App() {
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
                           Ingreso: {truck.date}
-                        </span>
-                        <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">
-                          <FileText className="w-3.5 h-3.5" />
-                          OT: {truck.ot || 'Sin OT'}
                         </span>
                       </div>
                     </div>
@@ -1109,7 +1106,7 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
             <h2 className="text-xl font-bold text-slate-800">
                {initialData ? 'Editar Recepción' : 'Checklist de Recepción'}
             </h2>
-            <p className="text-sm text-slate-500">{initialData ? formData.id : 'Ingreso de nuevo chasis a planta'}</p>
+            <p className="text-sm text-slate-500">{initialData ? `Orden de Trabajo: ${formData.ot}` : 'Ingreso de nuevo chasis a planta'}</p>
           </div>
           <button onClick={onClose} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors">
             <X className="w-5 h-5 text-slate-600" />
@@ -1281,7 +1278,7 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
                   <div className="flex items-center gap-2 text-slate-600 bg-slate-50 p-3 rounded-lg text-sm border border-slate-100">
                     <MapPin className="w-5 h-5 text-red-500 shrink-0" />
-                    <p>Ubicación GPS fijada en: <strong className="text-slate-800">Planta Maipú, Santiago</strong></p>
+                    <p>Ubicación GPS fijada en: <strong className="text-slate-800">Metalúrgica Bolcato, Santiago</strong></p>
                   </div>
 
                   <div>
@@ -1343,129 +1340,185 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
   );
 }
 
-// --- NUEVO COMPONENTE: DETALLES Y PDF ---
+// --- NUEVO COMPONENTE: DETALLES Y PDF DIRECTO ---
 function TruckDetailsModal({ truck, template = [], onClose }) {
-  const handlePrint = () => {
-    window.print();
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    setIsGenerating(true);
+    // Seleccionamos específicamente la "Hoja" que creamos abajo
+    const element = document.getElementById('documento-pdf');
+    
+    // Configuración para formato Carta (Letter) Vertical
+    const opt = {
+      margin:       [10, 0, 15, 0], // Margen: arriba, izquierda, abajo, derecha
+      filename:     `Acta_Recepcion_${truck.ot || 'SIN-OT'}_${truck.plate}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false }, // useCORS permite cargar las fotos de Firebase
+      jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' }
+    };
+
+    try {
+      await html2pdf().set(opt).from(element).save();
+    } catch (error) {
+      console.error("Error al crear PDF:", error);
+      alert("Hubo un error al descargar el archivo. Verifica tu conexión a internet.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const getItemName = (key) => {
     const found = template.find(t => t.id === key);
     if (found) return found.name;
-    return key.replace(/_/g, ' '); // Respaldo para los antiguos
+    return key.replace(/_/g, ' '); 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex justify-center items-start p-4 sm:p-6 overflow-y-auto">
-      {/* Estilos inyectados que solo funcionan al guardar como PDF/Imprimir */}
-      <style>{`
-        @media print {
-          body * { visibility: hidden; }
-          #printable-modal, #printable-modal * { visibility: visible; }
-          #printable-modal { position: absolute; left: 0; top: 0; width: 100%; background: white; margin: 0; padding: 0; }
-          @page { size: auto; margin: 10mm; }
-        }
-      `}</style>
+    <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex flex-col items-center p-4 sm:p-8 overflow-y-auto">
+      
+      {/* Barra de Acciones Superior (NO SALE EN EL PDF) */}
+      <div className="w-full max-w-[800px] flex justify-between items-center mb-4 shrink-0">
+        <button onClick={onClose} className="bg-slate-800 hover:bg-slate-700 text-white p-2.5 rounded-xl transition-colors shadow-lg">
+          <X className="w-6 h-6"/>
+        </button>
+        <button 
+          onClick={handleDownloadPDF} 
+          disabled={isGenerating}
+          className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-colors shadow-lg disabled:bg-blue-400"
+        >
+          {isGenerating ? <Loader2 className="w-5 h-5 animate-spin"/> : <Download className="w-5 h-5"/>}
+          {isGenerating ? 'Generando Archivo...' : 'Descargar PDF'}
+        </button>
+      </div>
 
-      <div id="printable-modal" className="bg-slate-50 w-full max-w-3xl rounded-2xl shadow-xl overflow-hidden mt-10 print:mt-0 print:shadow-none print:bg-white">
+      {/* Contenedor que permite Scroll en Celulares sin romper la hoja */}
+      <div className="w-full max-w-[800px] overflow-x-auto rounded-xl shadow-2xl shrink-0 border border-slate-700 bg-slate-200 p-2 sm:p-0">
         
-        {/* Cabecera - Se adapta para el PDF */}
-        <div className="p-6 bg-slate-900 text-white flex justify-between items-start sm:items-center print:bg-white print:text-black print:p-0 print:mb-6 print:border-b-2 print:border-slate-800 print:pb-4">
-          <div>
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Truck className="w-6 h-6 print:hidden" />
-              Orden de Trabajo: {truck.ot}
-            </h2>
-            <p className="text-slate-400 print:text-slate-600 mt-1">{truck.clientName} | RUT: {truck.rut}</p>
-          </div>
-          <div className="flex gap-2 print:hidden mt-4 sm:mt-0">
-            <button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors shadow-sm">
-              <Download className="w-4 h-4"/> Descargar PDF
-            </button>
-            <button onClick={onClose} className="bg-slate-800 hover:bg-slate-700 p-2 rounded-lg transition-colors text-white">
-              <X className="w-5 h-5"/>
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6 space-y-6 print:p-0 print:space-y-6 text-sm">
-          {/* Info General */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none print:p-3">
-              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Vehículo</span>
-              <span className="font-bold text-slate-800 block truncate">{truck.make} {truck.model}</span>
+        {/* LA HOJA CARTA REAL (800px de ancho fijo) */}
+        <div id="documento-pdf" className="bg-white text-slate-900 mx-auto relative p-10" style={{ width: '800px', minHeight: '1056px' }}>
+          
+          {/* Encabezado del Documento */}
+          <div className="border-b-4 border-slate-900 pb-4 mb-8 flex justify-between items-end">
+            <div>
+              <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight mb-1">Acta de Recepción</h1>
+              <h2 className="text-lg font-bold text-slate-500 flex items-center gap-2"><User className="w-5 h-5"/> {truck.clientName} | RUT: {truck.rut || 'S/N'}</h2>
             </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none print:p-3">
-              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Patente</span>
-              <span className="font-bold text-slate-800 block truncate">{truck.plate}</span>
-            </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none print:p-3">
-              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">VIN</span>
-              <span className="font-bold text-slate-800 block truncate">{truck.vin}</span>
-            </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none print:p-3">
-              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Ingreso</span>
-              <span className="font-bold text-slate-800 block truncate">{truck.date}</span>
+            <div className="text-right">
+              <div className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-1">Orden de Trabajo</div>
+              <div className="text-3xl font-black text-blue-700">{truck.ot || 'S/N'}</div>
             </div>
           </div>
 
-          {/* Checklist */}
-          <div className="print:break-inside-avoid">
-            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-blue-600 print:text-black"/> Estado al Recibir</h3>
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-2">
-                {truck.checklist && Object.keys(truck.checklist).map(item => {
-                  const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
-                  return (
-                    <div key={item} className="flex flex-col gap-1 text-sm">
-                      <div className="flex items-center gap-2">
-                        {itemData.checked ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-400 shrink-0 print:text-slate-400" />}
-                        <span className="capitalize text-slate-700 font-medium">{getItemName(item)}</span>
-                      </div>
-                      {itemData.text && (
-                        <span className="text-xs text-slate-500 ml-6 italic line-clamp-2 print:line-clamp-none">- {itemData.text}</span>
-                      )}
-                    </div>
-                  );
-                })}
+          {/* Bloque 1: Datos de Vehículo y Taller */}
+          <div className="grid grid-cols-2 gap-6 mb-8">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Datos del Vehículo</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between border-b border-slate-200 pb-1">
+                  <span className="font-medium text-slate-600">Patente:</span>
+                  <span className="font-mono font-bold text-slate-900">{truck.plate}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200 pb-1">
+                  <span className="font-medium text-slate-600">VIN / Chasis:</span>
+                  <span className="font-mono text-slate-900">{truck.vin || 'No registrado'}</span>
+                </div>
+                <div className="flex justify-between pb-1">
+                  <span className="font-medium text-slate-600">Marca/Modelo:</span>
+                  <span className="font-bold text-slate-900">{truck.make} {truck.model}</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Detalles de Ingreso</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between border-b border-slate-200 pb-1">
+                  <span className="font-medium text-slate-600">Fecha:</span>
+                  <span className="font-bold text-slate-900">{truck.date}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200 pb-1">
+                  <span className="font-medium text-slate-600">Origen:</span>
+                  <span className="text-slate-900">{truck.dealership}</span>
+                </div>
+                <div className="flex justify-between pb-1">
+                  <span className="font-medium text-slate-600">Entregado por:</span>
+                  <span className="font-bold text-slate-900 truncate max-w-[150px]">{truck.deliveryPerson}</span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Fotos del Checklist - CON TAMAÑO EXACTO PARA EL PDF */}
+          {/* Bloque 2: Checklist */}
+          <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
+            <h3 className="text-lg font-bold text-blue-900 border-b-2 border-slate-200 pb-2 mb-4 flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5"/> Verificación de Estado al Recibir
+            </h3>
+            <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+              {truck.checklist && Object.keys(truck.checklist).map(item => {
+                const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
+                return (
+                  <div key={item} className="flex flex-col gap-1 text-[13px]">
+                    <div className="flex items-center gap-2">
+                      {itemData.checked ? <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" /> : <X className="w-4 h-4 text-red-500 shrink-0" />}
+                      <span className="capitalize font-semibold text-slate-800 truncate">{getItemName(item)}</span>
+                    </div>
+                    {itemData.text && (
+                      <span className="text-slate-500 ml-6 italic leading-tight">- {itemData.text}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Bloque 3: Fotos (Con tamaño ajustado para que quepan perfectas en la hoja) */}
           {truck.checklistPhotos && truck.checklistPhotos.length > 0 && (
-            <div className="print:break-inside-avoid">
-              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Camera className="w-5 h-5 text-blue-600 print:text-black"/> Registro Fotográfico (Recepción)</h3>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-3 print:border-slate-300 print:shadow-none">
+            <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
+              <h3 className="text-lg font-bold text-blue-900 border-b-2 border-slate-200 pb-2 mb-4 flex items-center gap-2">
+                <Camera className="w-5 h-5"/> Registro Fotográfico
+              </h3>
+              <div className="grid grid-cols-4 gap-3">
                 {truck.checklistPhotos.map((photo, idx) => (
-                  <a key={idx} href={photo} target="_blank" rel="noreferrer" className="shrink-0 w-24 h-24 sm:w-32 sm:h-32 print:w-40 print:h-40">
-                    <img src={photo} alt={`Foto Recepción ${idx + 1}`} className="w-full h-full object-cover rounded-xl border border-slate-200 print:border-slate-300" />
-                  </a>
+                  // El atributo crossOrigin="anonymous" ayuda a que el PDF no falle al capturar imágenes de la nube
+                  <img key={idx} src={photo} crossOrigin="anonymous" alt={`Recepción ${idx+1}`} className="w-full h-32 object-cover rounded-lg border border-slate-300 shadow-sm" />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Notas */}
+          {/* Bloque 4: Notas */}
           {truck.notes && (
-            <div className="print:break-inside-avoid">
-              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileText className="w-5 h-5 text-blue-600 print:text-black"/> Observaciones</h3>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-slate-700 whitespace-pre-line print:border-slate-300 print:shadow-none">
+            <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
+              <h3 className="text-lg font-bold text-blue-900 border-b-2 border-slate-200 pb-2 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5"/> Observaciones Finales
+              </h3>
+              <div className="bg-yellow-50/50 p-4 border border-yellow-200 rounded-xl text-sm text-slate-800 whitespace-pre-line leading-relaxed">
                 {truck.notes}
               </div>
             </div>
           )}
 
-          {/* Firma */}
-          {truck.signature && (
-            <div className="print:break-inside-avoid pt-6 pb-4">
-              <div className="w-64 mx-auto text-center">
-                <img src={truck.signature} alt="Firma Cliente" className="w-full h-auto border-b border-slate-800 mb-2" />
-                <p className="font-bold text-slate-800">Firma Conductor / Entrega</p>
-                <p className="text-sm text-slate-500">{truck.deliveryPerson} - {truck.dealership}</p>
-              </div>
+          {/* Bloque 5: Firmas */}
+          <div className="mt-12 pt-8 flex justify-around" style={{ pageBreakInside: 'avoid' }}>
+            <div className="w-64 text-center">
+              {truck.signature ? (
+                <img src={truck.signature} crossOrigin="anonymous" alt="Firma" className="mx-auto h-20 object-contain mb-2" />
+              ) : (
+                <div className="h-20 mb-2"></div>
+              )}
+              <div className="border-t-2 border-slate-800 pt-2 font-bold uppercase text-sm text-slate-900">Firma Quien Entrega</div>
+              <div className="text-xs text-slate-500 mt-1">{truck.deliveryPerson}</div>
+              <div className="text-xs text-slate-500">{truck.dealership}</div>
             </div>
-          )}
+            <div className="w-64 text-center">
+              <div className="h-20 mb-2 flex items-end justify-center pb-2">
+                <span className="text-slate-300 italic text-sm">(Timbre o Firma)</span>
+              </div>
+              <div className="border-t-2 border-slate-800 pt-2 font-bold uppercase text-sm text-slate-900">Metalúrgica Bolcato</div>
+              <div className="text-xs text-slate-500 mt-1">Santiago, Chile</div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -1744,7 +1797,7 @@ function ClientPreviewModal({ truck, onClose }) {
                   <MapPin className="text-blue-600 w-6 h-6" />
                </div>
                <div>
-                  <span className="block font-bold text-slate-800">Planta Maipú</span>
+                  <span className="block font-bold text-slate-800">Metalúrgica Bolcato</span>
                   <span className="text-sm text-slate-500">Región Metropolitana, Santiago</span>
                </div>
              </div>
