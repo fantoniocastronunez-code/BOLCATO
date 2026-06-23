@@ -680,7 +680,11 @@ export default function App() {
       )}
 
       {viewingTruck && (
-        <TruckDetailsModal truck={viewingTruck} onClose={() => setViewingTruck(null)} />
+        <TruckDetailsModal 
+          truck={viewingTruck} 
+          template={checklistTemplate}
+          onClose={() => setViewingTruck(null)} 
+        />
       )}
 
       {/* Modal de Avances y Fotos */}
@@ -1339,202 +1343,129 @@ function ReceptionForm({ onClose, onSave, initialData, clients, checklistTemplat
   );
 }
 
-function TruckDetailsModal({ truck, onClose }) {
-  
-  const handlePrintPDF = () => {
-    const printWindow = window.open('', '_blank');
-    
-    // Plantilla HTML profesional para el PDF
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Recepcion_${truck.ot}_${truck.plate}</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; padding: 40px; line-height: 1.5; font-size: 14px; }
-            .header { text-align: center; border-bottom: 3px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
-            .header h1 { margin: 0; color: #0f172a; font-size: 26px; text-transform: uppercase; letter-spacing: 1px; }
-            .header p { margin: 5px 0 0 0; color: #64748b; font-size: 14px; }
-            .grid { display: flex; justify-content: space-between; margin-bottom: 30px; gap: 20px; }
-            .col { flex: 1; background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; }
-            .section-title { font-size: 16px; font-weight: bold; color: #1e3a8a; border-bottom: 2px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 15px; text-transform: uppercase; }
-            .item { margin-bottom: 8px; }
-            .item strong { color: #475569; display: inline-block; width: 130px; }
-            .checklist-container { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
-            .checklist-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-            .check-item { display: flex; align-items: center; }
-            .box { width: 16px; height: 16px; border: 2px solid #94a3b8; display: inline-flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold; font-size: 12px; border-radius: 4px; }
-            .box.yes { background: #22c55e; color: white; border-color: #22c55e; }
-            .box.no { background: #ef4444; color: white; border-color: #ef4444; }
-            .notes { background: #fffbeb; border: 1px solid #fde68a; padding: 15px; border-radius: 8px; margin-bottom: 40px; min-height: 60px; color: #92400e; }
-            .signatures { display: flex; justify-content: space-around; margin-top: 60px; }
-            .sign-box { width: 40%; text-align: center; }
-            .sign-line { border-top: 1px solid #334155; padding-top: 10px; margin-top: 60px; font-weight: bold; }
-            .sign-img { max-width: 100%; height: 90px; object-fit: contain; margin-bottom: -20px; }
-            @media print {
-              body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              @page { margin: 1cm; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Acta de Recepción de Vehículo</h1>
-            <p>Orden de Trabajo: <strong style="color:#1e3a8a; font-size: 16px;">${truck.ot || 'S/N'}</strong> | Fecha de Ingreso: ${truck.date}</p>
-            <p>Código Interno: ${truck.id} | Planta Maipú, Santiago</p>
-          </div>
+// --- NUEVO COMPONENTE: DETALLES Y PDF ---
+function TruckDetailsModal({ truck, template = [], onClose }) {
+  const handlePrint = () => {
+    window.print();
+  };
 
-          <div class="grid">
-            <div class="col">
-              <div class="section-title">Datos del Cliente</div>
-              <div class="item"><strong>Empresa:</strong> ${truck.clientName}</div>
-              <div class="item"><strong>RUT:</strong> ${truck.rut || 'No registrado'}</div>
-              <div class="item"><strong>Entregado por:</strong> ${truck.deliveryPerson}</div>
-              <div class="item"><strong>Concesionario:</strong> ${truck.dealership}</div>
-            </div>
-            <div class="col">
-              <div class="section-title">Datos del Vehículo</div>
-              <div class="item"><strong>Patente:</strong> <span style="font-family: monospace; font-size: 16px;">${truck.plate}</span></div>
-              <div class="item"><strong>Marca / Modelo:</strong> ${truck.make} ${truck.model}</div>
-              <div class="item"><strong>VIN (Chasis):</strong> <span style="font-family: monospace;">${truck.vin || 'No registrado'}</span></div>
-            </div>
-          </div>
-
-          <div class="section-title">Checklist de Verificación Visual</div>
-          <div class="checklist-container">
-            <div class="checklist-grid">
-              ${truck.checklist ? Object.keys(truck.checklist).map(item => `
-                <div class="check-item">
-                  <div class="box ${truck.checklist[item] ? 'yes' : 'no'}">${truck.checklist[item] ? '✓' : 'X'}</div>
-                  <span style="text-transform: capitalize;">${item}</span>
-                </div>
-              `).join('') : '<p>Sin checklist registrado.</p>'}
-            </div>
-          </div>
-
-          <div class="section-title">Observaciones y/o Daños Previos</div>
-          <div class="notes">
-            ${truck.notes ? truck.notes : 'El vehículo ingresa sin observaciones ni daños visibles reportados.'}
-          </div>
-
-          <div class="signatures">
-            <div class="sign-box">
-              ${truck.signature ? `<img src="${truck.signature}" class="sign-img" />` : '<div style="height: 90px;"></div>'}
-              <div class="sign-line">Firma Quien Entrega<br/><span style="font-weight:normal;font-size:12px;color:#64748b;">${truck.deliveryPerson}</span></div>
-            </div>
-            <div class="sign-box">
-              <div style="height: 90px;"></div>
-              <div class="sign-line">Firma Recepcionista Taller<br/><span style="font-weight:normal;font-size:12px;color:#64748b;">Responsable Planta Maipú</span></div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-    
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-    
-    // Le damos medio segundo para que la imagen de la firma cargue antes de lanzar el menú de imprimir
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 500);
+  const getItemName = (key) => {
+    const found = template.find(t => t.id === key);
+    if (found) return found.name;
+    return key.replace(/_/g, ' '); // Respaldo para los antiguos
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-      <div className="bg-white w-full max-w-2xl rounded-2xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95">
+    <div className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex justify-center items-start p-4 sm:p-6 overflow-y-auto">
+      {/* Estilos inyectados que solo funcionan al guardar como PDF/Imprimir */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #printable-modal, #printable-modal * { visibility: visible; }
+          #printable-modal { position: absolute; left: 0; top: 0; width: 100%; background: white; margin: 0; padding: 0; }
+          @page { size: auto; margin: 10mm; }
+        }
+      `}</style>
+
+      <div id="printable-modal" className="bg-slate-50 w-full max-w-3xl rounded-2xl shadow-xl overflow-hidden mt-10 print:mt-0 print:shadow-none print:bg-white">
         
-        {/* Header Modal Detalles */}
-        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-900 text-white rounded-t-2xl">
+        {/* Cabecera - Se adapta para el PDF */}
+        <div className="p-6 bg-slate-900 text-white flex justify-between items-start sm:items-center print:bg-white print:text-black print:p-0 print:mb-6 print:border-b-2 print:border-slate-800 print:pb-4">
           <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              Detalle de Recepción 
-              <span className="bg-blue-600 text-white px-2 py-0.5 rounded text-sm font-mono">{truck.id}</span>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <Truck className="w-6 h-6 print:hidden" />
+              Orden de Trabajo: {truck.ot}
             </h2>
-            <p className="text-slate-300 text-sm mt-1">OT: <strong className="text-white">{truck.ot}</strong></p>
+            <p className="text-slate-400 print:text-slate-600 mt-1">{truck.clientName} | RUT: {truck.rut}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={handlePrintPDF} 
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl transition-colors shadow-sm"
-              title="Guardar como PDF o Imprimir"
-            >
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Descargar PDF</span>
+          <div className="flex gap-2 print:hidden mt-4 sm:mt-0">
+            <button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors shadow-sm">
+              <Download className="w-4 h-4"/> Descargar PDF
             </button>
-            <button onClick={onClose} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors text-white" title="Cerrar">
-              <X className="w-5 h-5" />
+            <button onClick={onClose} className="bg-slate-800 hover:bg-slate-700 p-2 rounded-lg transition-colors text-white">
+              <X className="w-5 h-5"/>
             </button>
           </div>
         </div>
 
-        {/* Contenido Scrollable Detalles */}
-        <div className="p-6 overflow-y-auto space-y-6 bg-slate-50">
-          
-          <div className="grid grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div><span className="text-sm text-slate-500 block">Cliente</span><span className="font-bold text-slate-800">{truck.clientName}</span></div>
-            <div><span className="text-sm text-slate-500 block">RUT</span><span className="font-medium text-slate-800">{truck.rut || 'No registrado'}</span></div>
-            <div><span className="text-sm text-slate-500 block">Fecha Ingreso</span><span className="font-medium text-slate-800">{truck.date}</span></div>
-            <div><span className="text-sm text-slate-500 block">Estado Actual</span><StatusBadge status={truck.status} /></div>
-          </div>
-
-          <div>
-            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Truck className="w-5 h-5 text-blue-600"/> Datos del Vehículo</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div><span className="text-slate-500 block mb-1">Patente</span><span className="font-mono bg-slate-100 px-2 py-1 rounded font-bold text-slate-800">{truck.plate}</span></div>
-              <div className="col-span-2 sm:col-span-1"><span className="text-slate-500 block mb-1">VIN (Chasis)</span><span className="font-mono">{truck.vin || 'No registrado'}</span></div>
-              <div><span className="text-slate-500 block mb-1">Marca</span><span className="font-medium">{truck.make}</span></div>
-              <div><span className="text-slate-500 block mb-1">Modelo</span><span className="font-medium">{truck.model}</span></div>
-              <div><span className="text-slate-500 block mb-1">Entregado por</span>{truck.deliveryPerson}</div>
-              <div><span className="text-slate-500 block mb-1">Origen</span>{truck.dealership}</div>
+        <div className="p-6 space-y-6 print:p-0 print:space-y-6 text-sm">
+          {/* Info General */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none print:p-3">
+              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Vehículo</span>
+              <span className="font-bold text-slate-800 block truncate">{truck.make} {truck.model}</span>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none print:p-3">
+              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Patente</span>
+              <span className="font-bold text-slate-800 block truncate">{truck.plate}</span>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none print:p-3">
+              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">VIN</span>
+              <span className="font-bold text-slate-800 block truncate">{truck.vin}</span>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none print:p-3">
+              <span className="block text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">Ingreso</span>
+              <span className="font-bold text-slate-800 block truncate">{truck.date}</span>
             </div>
           </div>
 
-          <div>
-            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-blue-600"/> Estado al Recibir</h3>
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          {/* Checklist */}
+          <div className="print:break-inside-avoid">
+            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-blue-600 print:text-black"/> Estado al Recibir</h3>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:border-slate-300 print:shadow-none">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-2">
-                {truck.checklist && Object.keys(truck.checklist).map(item => (
-                  <div key={item} className="flex items-center gap-2 text-sm">
-                    {truck.checklist[item] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" /> : <X className="w-5 h-5 text-red-400 shrink-0" />}
-                    <span className="capitalize text-slate-700">{item}</span>
-                  </div>
-                ))}
+                {truck.checklist && Object.keys(truck.checklist).map(item => {
+                  const itemData = typeof truck.checklist[item] === 'object' ? truck.checklist[item] : { checked: truck.checklist[item], text: '' };
+                  return (
+                    <div key={item} className="flex flex-col gap-1 text-sm">
+                      <div className="flex items-center gap-2">
+                        {itemData.checked ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-400 shrink-0 print:text-slate-400" />}
+                        <span className="capitalize text-slate-700 font-medium">{getItemName(item)}</span>
+                      </div>
+                      {itemData.text && (
+                        <span className="text-xs text-slate-500 ml-6 italic line-clamp-2 print:line-clamp-none">- {itemData.text}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
 
+          {/* Fotos del Checklist - CON TAMAÑO EXACTO PARA EL PDF */}
           {truck.checklistPhotos && truck.checklistPhotos.length > 0 && (
-            <div>
-              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Camera className="w-5 h-5 text-blue-600"/> Registro Fotográfico</h3>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex gap-3 overflow-x-auto">
+            <div className="print:break-inside-avoid">
+              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Camera className="w-5 h-5 text-blue-600 print:text-black"/> Registro Fotográfico (Recepción)</h3>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-3 print:border-slate-300 print:shadow-none">
                 {truck.checklistPhotos.map((photo, idx) => (
-                  <a key={idx} href={photo} target="_blank" rel="noreferrer" className="shrink-0">
-                    <img src={photo} alt={`Foto Recepción ${idx + 1}`} className="w-32 h-32 object-cover rounded-xl border border-slate-200 hover:opacity-80 transition-opacity" />
+                  <a key={idx} href={photo} target="_blank" rel="noreferrer" className="shrink-0 w-24 h-24 sm:w-32 sm:h-32 print:w-40 print:h-40">
+                    <img src={photo} alt={`Foto Recepción ${idx + 1}`} className="w-full h-full object-cover rounded-xl border border-slate-200 print:border-slate-300" />
                   </a>
                 ))}
               </div>
             </div>
           )}
 
+          {/* Notas */}
           {truck.notes && (
-             <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
-               <span className="text-sm font-bold text-yellow-800 flex items-center gap-1 mb-2">
-                 <FileText className="w-4 h-4" /> Observaciones Finales
-               </span>
-               <p className="text-sm text-yellow-900 leading-relaxed">{truck.notes}</p>
-             </div>
-          )}
-
-          {truck.signature && (
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-sm font-bold text-slate-700 block mb-2">Firma del Conductor:</span>
-              <img src={truck.signature} alt="Firma" className="max-w-full h-auto border-b border-slate-200 pb-2" />
-              <p className="text-xs text-slate-500 mt-2 text-center">{truck.deliveryPerson}</p>
+            <div className="print:break-inside-avoid">
+              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileText className="w-5 h-5 text-blue-600 print:text-black"/> Observaciones</h3>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-slate-700 whitespace-pre-line print:border-slate-300 print:shadow-none">
+                {truck.notes}
+              </div>
             </div>
           )}
 
+          {/* Firma */}
+          {truck.signature && (
+            <div className="print:break-inside-avoid pt-6 pb-4">
+              <div className="w-64 mx-auto text-center">
+                <img src={truck.signature} alt="Firma Cliente" className="w-full h-auto border-b border-slate-800 mb-2" />
+                <p className="font-bold text-slate-800">Firma Conductor / Entrega</p>
+                <p className="text-sm text-slate-500">{truck.deliveryPerson} - {truck.dealership}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1761,13 +1692,15 @@ function ClientPreviewModal({ truck, onClose }) {
                   const isPending = index > currentStepIndex;
 
                   return (
-                    <div key={step} className={`flex flex-col sm:flex-row items-start gap-4 sm:justify-center w-full relative ${isPending ? 'opacity-40' : ''}`}>
+                    <div key={step} className={`flex flex-col sm:flex-row items-start sm:gap-0 gap-4 w-full relative ${isPending ? 'opacity-40' : ''}`}>
                       
-                      <div className="flex items-center gap-4 sm:w-1/3 sm:justify-end">
+                      {/* Lado Izquierdo (Móvil: Arriba, PC: Mitad izquierda exacta) */}
+                      <div className="flex items-center gap-4 sm:w-1/2 sm:justify-end sm:pr-8 relative">
                         {isCompleted && <span className="text-sm text-slate-500 hidden sm:block">Finalizado</span>}
                         {isCurrent && <span className="text-sm font-bold text-blue-600 hidden sm:block">En Proceso</span>}
                         
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-4 bg-white
+                        {/* El círculo se ancla con posición absoluta al centro exacto en PC */}
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-4 bg-white sm:absolute sm:-right-4
                           ${isCompleted ? 'border-green-500 text-green-500' : 
                             isCurrent ? 'border-blue-600 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'border-slate-300 text-slate-300'}`}
                         >
@@ -1775,7 +1708,8 @@ function ClientPreviewModal({ truck, onClose }) {
                         </div>
                       </div>
 
-                      <div className="sm:w-2/3 sm:pl-4 flex flex-col justify-center pb-8 border-l-2 sm:border-l-0 ml-4 sm:ml-0 pl-6 sm:pl-0 border-slate-200">
+                      {/* Lado Derecho (Móvil: Abajo, PC: Mitad derecha exacta) */}
+                      <div className="sm:w-1/2 sm:pl-8 flex flex-col justify-center pb-8 border-l-2 sm:border-l-0 ml-4 sm:ml-0 pl-6 sm:pl-0 border-slate-200">
                          <h4 className={`font-bold text-lg mb-2 ${isCurrent ? 'text-blue-700' : 'text-slate-800'}`}>{step}</h4>
                          
                          {/* Renderizado de Fotos */}
